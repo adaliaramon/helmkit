@@ -1,0 +1,21 @@
+[project]
+name = "helmkit"
+version = "0.1.0"
+description = "Parse HELM strings into RDKit molecules"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "rdkit>=2025.3.3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "polars>=1.31.0",
+    "pyupgrade>=3.20.0",
+    "reorder-python-imports>=3.15.0",
+    "tqdm>=4.67.1",
+]
