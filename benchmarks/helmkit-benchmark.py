@@ -5,6 +5,7 @@ import polars as pl
 from helmkit import load_monomer_library
 from helmkit import Molecule
 
+
 def main():
     data_dir = Path(__file__).parent / "data"
     df = pl.read_csv(data_dir / "peptides.csv")

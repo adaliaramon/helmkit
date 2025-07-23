@@ -6,6 +6,7 @@ from pyPept.converter import Converter
 from pyPept.molecule import Molecule
 from pyPept.sequence import Sequence
 
+
 def main():
     data_dir = Path(__file__).parent / "data"
     df = pl.read_csv(data_dir / "peptides.csv")

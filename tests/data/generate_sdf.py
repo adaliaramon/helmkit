@@ -1,8 +1,7 @@
 import polars as pl
-from rdkit import Chem
-
-from helmkit.molecule import infer_attachment_points
 from helmkit import SequenceConstants
+from helmkit.molecule import infer_attachment_points
+from rdkit import Chem
 
 # Some monomers were manually edited because they had more R-groups than expected
 # meK, Me_dK
