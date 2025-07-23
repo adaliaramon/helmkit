@@ -1,7 +1,8 @@
 import polars as pl
 from rdkit import Chem
 
-from pyPept import SequenceConstants
+from helmkit.molecule import infer_attachment_points
+from helmkit import SequenceConstants
 
 # Some monomers were manually edited because they had more R-groups than expected
 # meK, Me_dK
@@ -42,6 +43,8 @@ def main():
                 if 1 <= r_num <= SequenceConstants.max_rgroups:
                     rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
+            attachment_points = infer_attachment_points(mol, rgroup_idx_full)
+
             rgroup_vals = [
                 None if row.get(f"R{i + 1}") == "-" else row.get(f"R{i + 1}")
                 for i in range(SequenceConstants.max_rgroups)
@@ -56,6 +59,7 @@ def main():
             mol.SetProp("m_subtype", "non-natural")
             mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx_full)))
             mol.SetProp("m_Rgroups", ",".join(map(str, rgroup_vals)))
+            mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
             mol.SetProp("natAnalog", row["Natural_Analog"])
 
             writer.write(mol)
