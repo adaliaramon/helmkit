@@ -5,7 +5,7 @@ from rdkit import Chem
 from tqdm import tqdm
 
 
-def main():
+def test():
     random.seed(0)
     aminoacids = "ACDEFGHIKLMNPQRSTVWY"
     for _ in tqdm(range(1000)):
@@ -15,9 +15,8 @@ def main():
         molecule = Molecule(helm)
         inchi1 = Chem.MolToInchi(molecule.mol)
         inchi2 = Chem.MolToInchi(Chem.MolFromSequence(peptide))
-        if inchi1 != inchi2:
-            raise ValueError(f"{inchi1} != {inchi2}")
+        assert inchi1 == inchi2
 
 
 if __name__ == "__main__":
-    main()
+    test()
