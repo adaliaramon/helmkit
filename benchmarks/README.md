@@ -55,4 +55,4 @@ versions:
 - `polars 1.31.0` (CSV parsing and dataframe processing)
 - `rdkit 2025.3.3` (target output format and structure processing)
 - `pypept 1.0.0` (commit `ade9f5840691ad1f8fa22d13939a665c25175d5a`)
-- `helmkit 0.1.0` (local development version)
+- `helmkit 0.3.0` (local development version)
