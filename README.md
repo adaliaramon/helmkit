@@ -2,6 +2,18 @@
 
 A Python library for converting HELM (Hierarchical Editing Language for Macromolecules) notation to RDKit molecules.
 
+## Table of Contents
+
+- [Basic Usage](#basic-usage)
+- [Installation](#installation)
+- [Quick Example](#quick-example)
+- [Understanding HELM Notation](#understanding-helm-notation)
+- [Using Custom Monomer Data](#using-custom-monomer-data)
+- [SDF File Structure Requirements](#sdf-file-structure-requirements)
+- [Parallel Processing of Peptides](#parallel-processing-of-peptides)
+- [Development Setup](#development-setup)
+- [Running Tests](#running-tests)
+
 ## Basic Usage
 
 ```python
