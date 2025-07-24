@@ -14,10 +14,10 @@ def main():
     # (as these do not work with pyPept)
     regex = r"\[[^\]]*[\(\s-][^\]]*\]"
     df = df.filter(pl.col("HELM").str.contains(regex).not_())
+    helms = df["HELM"].to_list()
 
     start = time.perf_counter()
-    for row in df.iter_rows(named=True):
-        helm = row["HELM"]
+    for helm in helms:
         monomer_db = load_monomer_library(data_dir / "monomers.sdf")
         Molecule(helm, monomer_db)
     end = time.perf_counter()
