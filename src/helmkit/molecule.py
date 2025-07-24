@@ -1,6 +1,7 @@
 import copy
 import re
 import warnings
+from functools import lru_cache
 from importlib.resources import files
 from typing import Dict
 from typing import List
@@ -66,6 +67,7 @@ def infer_attachment_points(molecule: Chem.Mol, rgroup_indices: List[int]) -> Li
     return attachment_points
 
 
+@lru_cache
 def load_monomer_library(library_path: str) -> Dict:
     """Load and prepare monomer data from SDF file."""
     monomers_dict = {}
