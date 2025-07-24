@@ -1,4 +1,5 @@
 import copy
+import multiprocessing
 import re
 import warnings
 from functools import lru_cache
@@ -456,3 +457,15 @@ class Molecule:
         """Clean up the molecule by removing dummy atoms and sanitizing."""
         self.mol = Chem.DeleteSubstructs(self.mol, Chem.MolFromSmarts("[#0]"))
         Chem.SanitizeMol(self.mol)
+
+
+def _load_peptide(helm: str, monomer_df: Optional[Dict] = None) -> Molecule:
+    return Molecule(helm, monomer_df)
+
+
+def load_peptides_in_parallel(
+    helms: List[str], monomer_df: Optional[Dict] = None
+) -> List[Molecule]:
+    args = [(helm, monomer_df) for helm in helms]
+    with multiprocessing.Pool() as pool:
+        return pool.starmap(_load_peptide, args)
