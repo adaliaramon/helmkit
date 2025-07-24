@@ -38,10 +38,13 @@ and average parsing time:
 | `pyPept`                            | 676.65         | 0.144                    |
 | `helmkit`                           | 3.60           | 0.00077                  |
 | `helmkit` (DB reload every peptide) | 261.81         | 0.056                    |
+| `helmkit` (parallel loading)        | 1.42           | 0.000302                 |
 
 `helmkit` outperforms `pyPept` by approximately 188× when loading the monomer library
 once per session. When forced to reload the library for every peptide (needs disabling
-memoization in the source code), `helmkit` is still about 3× faster.
+memoization in the source code), `helmkit` is still about 3× faster. If we use
+parallelized loading in `helmkit`, we achieve an additional 2.5× speedup, resulting in a
+total speedup of approximately 477× over `pyPept`.
 
 ## Environment
 
