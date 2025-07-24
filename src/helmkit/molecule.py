@@ -69,8 +69,14 @@ def infer_attachment_points(molecule: Chem.Mol, rgroup_indices: List[int]) -> Li
 
 
 @lru_cache
-def load_monomer_library(library_path: str) -> Dict:
+def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     """Load and prepare monomer data from SDF file."""
+    if library_path is None:
+        library_path = str(
+            files(SequenceConstants.def_path).joinpath(
+                SequenceConstants.def_lib_filename
+            )
+        )
     monomers_dict = {}
     supplier = Chem.SDMolSupplier(library_path)
 
@@ -112,10 +118,7 @@ class Molecule:
         self.chain_offset = {}
 
         if monomer_df is None:
-            default_monomer_df_filepath = files(SequenceConstants.def_path).joinpath(
-                SequenceConstants.def_lib_filename
-            )
-            self.monomer_df = load_monomer_library(str(default_monomer_df_filepath))
+            self.monomer_df = load_monomer_library()
         else:
             self.monomer_df = monomer_df
 
