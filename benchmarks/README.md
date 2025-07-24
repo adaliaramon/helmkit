@@ -36,8 +36,8 @@ and average parsing time:
 | Tool                                | Total Time (s) | Avg Time per Peptide (s) | Peptides per Second |
 |-------------------------------------|---------------:|-------------------------:|--------------------:|
 | `pyPept`                            |         676.65 |                  0.14400 |                6.94 |
-| `helmkit`                           |           3.60 |                  0.00077 |             1303.89 |
 | `helmkit` (DB reload every peptide) |         261.81 |                  0.05600 |               17.93 |
+| `helmkit`                           |           3.60 |                  0.00077 |             1303.89 |
 | `helmkit` (parallel loading)        |           1.42 |                  0.00030 |             3305.63 |
 
 `helmkit` outperforms `pyPept` by approximately 188× when loading the monomer library
