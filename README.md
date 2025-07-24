@@ -15,6 +15,28 @@ molecule = Molecule(helm_string)
 rdkit_mol = molecule.mol
 ```
 
+## Installation
+
+To install `helmkit`, you can use either [`uv`](https://github.com/astral-sh/uv) or `pip`.
+
+### With [`uv`](https://github.com/astral-sh/uv)
+
+```bash
+uv pip install helmkit
+```
+
+or if you have added it as a dependency to your `pyproject.toml`:
+
+```bash
+uv add helmkit
+```
+
+### Without `uv`
+
+```bash
+pip install helmkit
+```
+
 ## Quick Example
 
 ```python
@@ -119,4 +141,21 @@ helm_strings = ["PEPTIDE1{A.R.G}$$$$", "PEPTIDE1{S.G.T}$$$$"]
 
 # Process peptides in parallel
 molecules = load_peptides_in_parallel(helm_strings, monomer_db)
+```
+
+## Development Setup
+
+To set up a development environment, first clone the repository.
+Then, from the root of the repository, use `uv` to sync the environment:
+
+```bash
+uv sync -U
+```
+
+## Running Tests
+
+To run the test suite, execute `pytest` from the root of the repository:
+
+```bash
+pytest
 ```
