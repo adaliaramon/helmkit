@@ -8,7 +8,7 @@ A Python library for converting HELM (Hierarchical Editing Language for Macromol
 from helmkit import Molecule
 
 # Create a molecule from a HELM string
-helm_string = "PEPTIDE1{A.R.G}$$$"
+helm_string = "PEPTIDE1{A.R.G}$$$$"
 molecule = Molecule(helm_string)
 
 # Access the RDKit molecule object
@@ -22,7 +22,7 @@ from helmkit import Molecule
 from rdkit.Chem import AllChem, Draw
 
 # Create a simple tripeptide (Ala-Arg-Gly)
-molecule = Molecule("PEPTIDE1{A.R.G}$$$")
+molecule = Molecule("PEPTIDE1{A.R.G}$$$$")
 
 # Generate 2D coordinates for visualization
 AllChem.Compute2DCoords(molecule.mol)
@@ -58,7 +58,7 @@ custom_sdf_path = "/path/to/your/custom_monomers.sdf"
 custom_monomers = load_monomer_library(custom_sdf_path)
 
 # Create molecule with custom monomer data
-molecule = Molecule("PEPTIDE1{A.R.G}$$$", monomer_df=custom_monomers)
+molecule = Molecule("PEPTIDE1{A.R.G}$$$$", monomer_df=custom_monomers)
 ```
 
 ## SDF File Structure Requirements
@@ -100,4 +100,23 @@ natural
 Ala
 
 $$$$
+```
+
+## Parallel Processing of Peptides
+
+For workflows involving a large number of peptides, `helmkit` provides a function to process them in parallel, significantly improving performance.
+
+```python
+from helmkit import load_monomer_library
+from helmkit import load_peptides_in_parallel
+
+# Load your custom monomer data (optional)
+custom_sdf_path = "/path/to/your/custom_monomers.sdf"
+monomer_db = load_monomer_library(custom_sdf_path)
+
+# A list of HELM strings
+helm_strings = ["PEPTIDE1{A.R.G}$$$$", "PEPTIDE1{S.G.T}$$$$"]
+
+# Process peptides in parallel
+molecules = load_peptides_in_parallel(helm_strings, monomer_db)
 ```
