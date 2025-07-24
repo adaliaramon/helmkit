@@ -33,12 +33,12 @@ that `pyPept` cannot handle were excluded (monomers with names containing whites
 hyphens or parenthesis), resulting in a total of 4694 peptides. We measured the total
 and average parsing time:
 
-| Tool                                | Total Time (s) | Avg Time per Peptide (s) |
-|-------------------------------------|----------------|--------------------------|
-| `pyPept`                            | 676.65         | 0.144                    |
-| `helmkit`                           | 3.60           | 0.00077                  |
-| `helmkit` (DB reload every peptide) | 261.81         | 0.056                    |
-| `helmkit` (parallel loading)        | 1.42           | 0.000302                 |
+| Tool                                | Total Time (s) | Avg Time per Peptide (s) | Peptides per Second |
+| ----------------------------------- | -------------- | ------------------------ | ------------------- |
+| `pyPept`                            | 676.65         | 0.144000                 | 6.94                |
+| `helmkit`                           | 3.60           | 0.000770                 | 1303.89             |
+| `helmkit` (DB reload every peptide) | 261.81         | 0.056000                 | 17.93               |
+| `helmkit` (parallel loading)        | 1.42           | 0.000302                 | 3305.63             |
 
 `helmkit` outperforms `pyPept` by approximately 188× when loading the monomer library
 once per session. When forced to reload the library for every peptide (needs disabling
