@@ -3,6 +3,7 @@ import multiprocessing
 import re
 import warnings
 from functools import lru_cache
+from functools import reduce
 from importlib.resources import files
 from typing import Dict
 from typing import List
@@ -409,12 +410,9 @@ class Molecule:
             self.mol = Chem.RWMol()
             return
 
-        combined_mol = self.monomers[0]["m_romol"]
-
-        for i in range(1, len(self.monomers)):
-            combined_mol = Chem.CombineMols(combined_mol, self.monomers[i]["m_romol"])
-
-        self.mol = Chem.RWMol(combined_mol)
+        mols = (monomer["m_romol"] for monomer in self.monomers)
+        combined = reduce(Chem.CombineMols, mols)
+        self.mol = Chem.RWMol(combined)
 
     def _add_bonds(self) -> None:
         """Add bonds between monomers based on bond list."""
