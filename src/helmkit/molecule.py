@@ -428,8 +428,6 @@ class Molecule:
 
     def _process_rgroups(self) -> None:
         """Process R-groups in the molecule, replacing or removing as needed."""
-        rwmol = Chem.RWMol(self.mol)
-
         for idx, monomer in enumerate(self.monomers):
             rgroups = monomer["m_Rgroups"]
             rgroup_idx = monomer["m_RgroupIdx"]
@@ -437,9 +435,9 @@ class Molecule:
 
             for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
                 if rgroups[i] is not None:
-                    self._replace_rgroup(rwmol, atom_offset, rgroup_idx[i], rgroups[i])
-
-        self.mol = rwmol
+                    self._replace_rgroup(
+                        self.mol, atom_offset, rgroup_idx[i], rgroups[i]
+                    )
 
     def _replace_rgroup(
         self, rdkit_mol: Chem.RWMol, atom_offset: int, atom_idx: int, atom_type: str
