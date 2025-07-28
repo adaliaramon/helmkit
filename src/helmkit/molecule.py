@@ -1,4 +1,3 @@
-import copy
 import multiprocessing
 import re
 import warnings
@@ -225,7 +224,7 @@ class Molecule:
             "m_chainID": chain_id,
             "m_resID": residue_idx,
             "m_romol": monomer_info["m_romol"],
-            "m_Rgroups": copy.deepcopy(monomer_info["m_Rgroups"]),
+            "m_Rgroups": monomer_info["m_Rgroups"][:],
             "m_RgroupIdx": monomer_info["m_RgroupIdx"],
             "m_attachmentPointIdx": monomer_info["m_attachmentPointIdx"],
             "m_type": monomer_info["m_type"],
