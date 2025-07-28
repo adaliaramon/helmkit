@@ -466,6 +466,10 @@ def _load_peptide(helm: str) -> Molecule:
     return Molecule(helm, _monomer_df)
 
 
-def load_peptides_in_parallel(helms: List[str], monomer_df: Dict) -> List[Molecule]:
+def load_peptides_in_parallel(
+    helms: List[str], monomer_df: Optional[Dict] = None
+) -> List[Molecule]:
+    if monomer_df is None:
+        monomer_df = load_monomer_library()
     with multiprocessing.Pool(initializer=_init_pool, initargs=(monomer_df,)) as pool:
         return pool.map(_load_peptide, helms)
