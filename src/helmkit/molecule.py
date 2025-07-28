@@ -457,15 +457,15 @@ class Molecule:
         Chem.SanitizeMol(self.mol)
 
 
-def _init_pool(monomer_df):
+def _init_pool(monomer_df: Dict):
     global _monomer_df
     _monomer_df = monomer_df
 
 
-def _load_peptide(helm):
+def _load_peptide(helm: str) -> Molecule:
     return Molecule(helm, _monomer_df)
 
 
-def load_peptides_in_parallel(helms, monomer_df):
+def load_peptides_in_parallel(helms: List[str], monomer_df: Dict) -> List[Molecule]:
     with multiprocessing.Pool(initializer=_init_pool, initargs=(monomer_df,)) as pool:
         return pool.map(_load_peptide, helms)
