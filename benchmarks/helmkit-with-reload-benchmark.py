@@ -5,6 +5,9 @@ import polars as pl
 from helmkit import load_monomer_library
 from helmkit import Molecule
 
+# Disable caching
+load_monomer_library = load_monomer_library.__wrapped__
+
 
 def main():
     data_dir = Path(__file__).parent / "data"
