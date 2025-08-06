@@ -354,32 +354,31 @@ class Molecule:
 
     def _build_molecule(self) -> None:
         """Build the RDKit molecule from parsed monomer and bond data."""
-        self._generate_atom_offsets()
-        self._combine_monomers()
-        self._add_bonds()
-        self._process_rgroups()
-        self._sanitize()
-
-    def _generate_atom_offsets(self) -> None:
-        """Generate atom offsets for each monomer in the molecule."""
-        self.offset = [0]
-        current_offset = 0
-
-        for monomer in self.monomers:
-            atom_count = monomer["m_romol"].GetNumAtoms()
-            current_offset += atom_count
-            self.offset.append(current_offset)
-
-    def _combine_monomers(self) -> None:
-        """Combine all monomers into a single molecule."""
         if not self.monomers:
             self.mol = Chem.RWMol()
             return
 
-        combined = Chem.RWMol(self.monomers[0]["m_romol"])
-        for monomer in self.monomers[1:]:
-            combined.InsertMol(monomer["m_romol"])
-        self.mol = combined
+        self.mol = Chem.RWMol()
+        self.offset = [0]
+        current_offset = 0
+
+        for monomer in self.monomers:
+            self.mol.InsertMol(monomer["m_romol"])
+
+            rgroups = monomer["m_Rgroups"]
+            rgroup_idx = monomer["m_RgroupIdx"]
+            for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
+                if rgroups[i] is not None:
+                    self._replace_rgroup(
+                        self.mol, current_offset, rgroup_idx[i], rgroups[i]
+                    )
+
+            atom_count = monomer["m_romol"].GetNumAtoms()
+            current_offset += atom_count
+            self.offset.append(current_offset)
+
+        self._add_bonds()
+        self._sanitize()
 
     def _add_bonds(self) -> None:
         """Add bonds between monomers based on bond list."""
@@ -390,19 +389,6 @@ class Molecule:
             self.mol.AddBond(
                 absolute_atom1_idx, absolute_atom2_idx, Chem.BondType.SINGLE
             )
-
-    def _process_rgroups(self) -> None:
-        """Process R-groups in the molecule, replacing or removing as needed."""
-        for idx, monomer in enumerate(self.monomers):
-            rgroups = monomer["m_Rgroups"]
-            rgroup_idx = monomer["m_RgroupIdx"]
-            atom_offset = self.offset[idx]
-
-            for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
-                if rgroups[i] is not None:
-                    self._replace_rgroup(
-                        self.mol, atom_offset, rgroup_idx[i], rgroups[i]
-                    )
 
     def _replace_rgroup(
         self, rdkit_mol: Chem.RWMol, atom_offset: int, atom_idx: int, atom_type: str
