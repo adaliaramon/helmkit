@@ -14,9 +14,6 @@ from rdkit import Chem
 class SequenceConstants:
     def_path = "helmkit.data"
     def_lib_filename = "monomers.sdf"
-    monomer_join = "-"
-    chain_separator = "."
-    csv_separator = ","
     helm_polymer = "|"
     max_rgroups = 4
 
@@ -34,7 +31,7 @@ def parse_comma_separated_property(
     if not property_value:
         return []
 
-    values = property_value.split(SequenceConstants.csv_separator)
+    values = property_value.split(",")
     if convert_func:
         values = [convert_func(v) if v != "None" else None for v in values]
     else:
