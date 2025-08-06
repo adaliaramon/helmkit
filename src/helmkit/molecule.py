@@ -358,11 +358,19 @@ class Molecule:
             self.mol = Chem.RWMol()
             return
 
-        self.mol = Chem.RWMol()
-        self.offset = [0]
-        current_offset = 0
+        monomer = self.monomers[0]
+        self.mol = Chem.RWMol(monomer["m_romol"])
 
-        for monomer in self.monomers:
+        rgroups = monomer["m_Rgroups"]
+        rgroup_idx = monomer["m_RgroupIdx"]
+        for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
+            if rgroups[i] is not None:
+                self._replace_rgroup(self.mol, 0, rgroup_idx[i], rgroups[i])
+
+        current_offset = self.mol.GetNumAtoms()
+        self.offset = [0, current_offset]
+
+        for monomer in self.monomers[1:]:
             self.mol.InsertMol(monomer["m_romol"])
 
             rgroups = monomer["m_Rgroups"]

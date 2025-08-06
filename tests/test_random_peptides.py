@@ -15,7 +15,7 @@ def test():
         molecule = Molecule(helm)
         inchi1 = Chem.MolToInchi(molecule.mol)
         inchi2 = Chem.MolToInchi(Chem.MolFromSequence(peptide))
-        assert inchi1 == inchi2
+        assert inchi1 == inchi2, (helm, inchi1, inchi2)
 
 
 if __name__ == "__main__":
