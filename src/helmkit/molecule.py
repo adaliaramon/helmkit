@@ -106,7 +106,6 @@ class Molecule:
         self.offset = []
         self.bondlist = []
         self.monomers = []
-        self.chains = {}
         self.chain_offset = {}
 
         if monomer_df is None:
@@ -136,7 +135,6 @@ class Molecule:
 
         self._process_polymers(polymer_sections)
         self._process_connections(connection_sections)
-        self._create_backbone_bonds()
 
     def _split_helm_sections(self, helm: str) -> List:
         """Split a HELM string into its components."""
@@ -224,9 +222,8 @@ class Molecule:
         }
 
     def _process_polymers(self, polymers: List[str]) -> None:
-        """Process polymer chains from HELM."""
+        """Process polymer chains from HELM, creating backbone bonds on the fly."""
         monomer_idx = 0
-        chain_monomer_ids = []
 
         for chain in polymers:
             chain = chain.strip()
@@ -246,9 +243,7 @@ class Molecule:
                 continue
 
             residues = self._split_sequence_with_brackets(sequence)
-
             self.chain_offset[chain_id] = monomer_idx
-            chain_monomer_ids_local = []
 
             for residue_idx, monomer_name in enumerate(residues):
                 monomer = self._process_monomer(monomer_name, chain_id, residue_idx)
@@ -256,12 +251,29 @@ class Molecule:
                     continue
 
                 self.monomers.append(monomer)
-                chain_monomer_ids_local.append(monomer_idx)
+
+                # If this is not the first monomer, create a backbone bond to the previous one.
+                if residue_idx > 0:
+                    # Previous monomer is at index monomer_idx - 1, current is at monomer_idx
+                    monomer1 = self.monomers[monomer_idx - 1]
+                    monomer2 = monomer
+
+                    # Standard peptide bond is between R2 of previous and R1 of current
+                    attachment_point1 = monomer1["m_attachmentPointIdx"][1]
+                    attachment_point2 = monomer2["m_attachmentPointIdx"][0]
+
+                    self.bondlist.append(
+                        [
+                            monomer_idx - 1,
+                            attachment_point1,
+                            monomer_idx,
+                            attachment_point2,
+                        ]
+                    )
+                    self._mark_used_rgroup(monomer_idx - 1, attachment_point1)
+                    self._mark_used_rgroup(monomer_idx, attachment_point2)
+
                 monomer_idx += 1
-
-            chain_monomer_ids.append(chain_monomer_ids_local)
-
-        self.chains = chain_monomer_ids
 
     def _parse_connection(self, connection_str: str) -> Optional[Tuple]:
         """Parse a single connection string."""
@@ -320,29 +332,6 @@ class Molecule:
 
             self._mark_used_rgroup(monomer_idx1, attachment_idx1)
             self._mark_used_rgroup(monomer_idx2, attachment_idx2)
-
-    def _create_backbone_bonds(self) -> None:
-        """Create peptide backbone bonds within each chain."""
-        if not self.chains:
-            return
-
-        for chain_ids in self.chains:
-            for i in range(len(chain_ids) - 1):
-                monomer_idx1 = chain_ids[i]
-                monomer_idx2 = chain_ids[i + 1]
-
-                monomer1 = self.monomers[monomer_idx1]
-                monomer2 = self.monomers[monomer_idx2]
-
-                attachment_idx1 = monomer1["m_attachmentPointIdx"][1]
-                attachment_idx2 = monomer2["m_attachmentPointIdx"][0]
-
-                self.bondlist.append(
-                    [monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2]
-                )
-
-                self._mark_used_rgroup(monomer_idx1, attachment_idx1)
-                self._mark_used_rgroup(monomer_idx2, attachment_idx2)
 
     def _mark_used_rgroup(self, monomer_idx: int, attachment_idx: int) -> None:
         """Mark an R-group as used based on its attachment point index."""
