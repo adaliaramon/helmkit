@@ -107,6 +107,8 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
 class Molecule:
     """Single class for HELM to RDKit Mol conversion."""
 
+    _bracket_re = re.compile(r"{(.*?)}")
+
     def __init__(self, helm: str, monomer_df: Optional[Dict] = None):
         """Initialize a Molecule object from a HELM string."""
         self.mol = None
@@ -234,20 +236,16 @@ class Molecule:
     def _process_polymers(self, polymers: List[str]) -> None:
         """Process polymer chains from HELM."""
         monomer_idx = 0
-        chain_types = []
         chain_monomer_ids = []
-        pattern = re.compile(r"{(.*?)}")
 
         for chain in polymers:
             chain = chain.strip()
-
-            match = pattern.search(chain)
+            match = self._bracket_re.search(chain)
             if not match:
                 warnings.warn(f"No sequence in polymer: {chain}")
                 continue
 
             id_chain = chain[: match.start()]
-
             chain_id, valid = self._extract_chain_id(id_chain)
             if not valid:
                 continue
@@ -260,9 +258,7 @@ class Molecule:
             residues = self._split_sequence_with_brackets(sequence)
 
             self.chain_offset[chain_id] = monomer_idx
-
             chain_monomer_ids_local = []
-            monomer_types = set()
 
             for residue_idx, monomer_name in enumerate(residues):
                 monomer = self._process_monomer(monomer_name, chain_id, residue_idx)
@@ -271,22 +267,11 @@ class Molecule:
 
                 self.monomers.append(monomer)
                 chain_monomer_ids_local.append(monomer_idx)
-                monomer_types.add(monomer["m_type"])
                 monomer_idx += 1
 
-            if len(monomer_types) == 1:
-                chain_type = "peptide" if "aa" in monomer_types else "chem"
-            else:
-                chain_type = "mixed"
-
-            chain_types.append(chain_type)
             chain_monomer_ids.append(chain_monomer_ids_local)
 
-        self.chains = {
-            "s_nChains": len(polymers),
-            "s_cType": chain_types,
-            "s_monomerIDs": chain_monomer_ids,
-        }
+        self.chains = chain_monomer_ids
 
     def _parse_connection(self, connection_str: str) -> Optional[Tuple]:
         """Parse a single connection string."""
@@ -348,7 +333,7 @@ class Molecule:
         if not self.chains:
             return
 
-        for chain_ids in self.chains["s_monomerIDs"]:
+        for chain_ids in self.chains:
             for i in range(len(chain_ids) - 1):
                 monomer_idx1 = chain_ids[i]
                 monomer_idx2 = chain_ids[i + 1]
