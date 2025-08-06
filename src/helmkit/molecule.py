@@ -12,8 +12,6 @@ from rdkit import Chem
 
 
 class SequenceConstants:
-    def_path = "helmkit.data"
-    def_lib_filename = "monomers.sdf"
     helm_polymer = "|"
     max_rgroups = 4
 
@@ -68,11 +66,7 @@ def infer_attachment_points(molecule: Chem.Mol, rgroup_indices: List[int]) -> Li
 def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     """Load and prepare monomer data from SDF file."""
     if library_path is None:
-        library_path = str(
-            files(SequenceConstants.def_path).joinpath(
-                SequenceConstants.def_lib_filename
-            )
-        )
+        library_path = str(files("helmkit.data") / "monomers.sdf")
     monomers_dict = {}
     supplier = Chem.SDMolSupplier(library_path)
 
