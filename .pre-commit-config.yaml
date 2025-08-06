@@ -1,4 +1,8 @@
 repos:
+  - repo: https://github.com/asottile/dead
+    rev: v2.1.0
+    hooks:
+    - id: dead
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -22,6 +26,6 @@ repos:
         args: [ --fix ]
       - id: ruff-format
   - repo: https://github.com/astral-sh/uv-pre-commit
-    rev: 0.8.4
+    rev: 0.8.5
     hooks:
       - id: uv-lock
