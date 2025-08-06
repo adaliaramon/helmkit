@@ -137,7 +137,6 @@ class Molecule:
         self._process_polymers(polymer_sections)
         self._process_connections(connection_sections)
         self._create_backbone_bonds()
-        self._fix_rgroups()
 
     def _split_helm_sections(self, helm: str) -> List:
         """Split a HELM string into its components."""
@@ -319,6 +318,9 @@ class Molecule:
                 [monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2]
             )
 
+            self._mark_used_rgroup(monomer_idx1, attachment_idx1)
+            self._mark_used_rgroup(monomer_idx2, attachment_idx2)
+
     def _create_backbone_bonds(self) -> None:
         """Create peptide backbone bonds within each chain."""
         if not self.chains:
@@ -332,25 +334,15 @@ class Molecule:
                 monomer1 = self.monomers[monomer_idx1]
                 monomer2 = self.monomers[monomer_idx2]
 
-                attachment_points1 = monomer1["m_attachmentPointIdx"]
-                attachment_points2 = monomer2["m_attachmentPointIdx"]
+                attachment_idx1 = monomer1["m_attachmentPointIdx"][1]
+                attachment_idx2 = monomer2["m_attachmentPointIdx"][0]
 
                 self.bondlist.append(
-                    [
-                        monomer_idx1,
-                        attachment_points1[1],
-                        monomer_idx2,
-                        attachment_points2[0],
-                    ]
+                    [monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2]
                 )
 
-    def _fix_rgroups(self) -> None:
-        """Mark R-groups that are used in bonds to be deleted later."""
-        for bond in self.bondlist:
-            monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2 = bond
-
-            self._mark_used_rgroup(monomer_idx1, attachment_idx1)
-            self._mark_used_rgroup(monomer_idx2, attachment_idx2)
+                self._mark_used_rgroup(monomer_idx1, attachment_idx1)
+                self._mark_used_rgroup(monomer_idx2, attachment_idx2)
 
     def _mark_used_rgroup(self, monomer_idx: int, attachment_idx: int) -> None:
         """Mark an R-group as used based on its attachment point index."""
@@ -443,9 +435,7 @@ def _load_peptide(helm: str) -> Molecule:
 
 
 def load_peptides_in_parallel(
-    helms: List[str],
-    monomer_df: Optional[Dict] = None,
-    chunksize: Optional[int] = 256,
+    helms: List[str], monomer_df: Optional[Dict] = None, chunksize: Optional[int] = 256
 ) -> List[Molecule]:
     if monomer_df is None:
         monomer_df = load_monomer_library()
