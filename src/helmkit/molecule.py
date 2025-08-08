@@ -68,7 +68,7 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     if library_path is None:
         library_path = str(files("helmkit.data") / "monomers.sdf")
     monomers_dict = {}
-    supplier = Chem.SDMolSupplier(library_path)
+    supplier = Chem.SDMolSupplier(library_path, removeHs=False)
 
     for mol in supplier:
         if mol is None:
@@ -403,9 +403,8 @@ class Molecule:
             warnings.warn(f"Unrecognized R-group type: {atom_type}")
 
     def _sanitize(self) -> None:
-        """Clean up the molecule by removing dummy atoms and sanitizing."""
+        """Clean up the molecule by removing dummy atoms."""
         self.mol = Chem.DeleteSubstructs(self.mol, Chem.MolFromSmarts("[#0]"))
-        Chem.SanitizeMol(self.mol)
 
 
 def _init_pool(monomer_df: Dict):
