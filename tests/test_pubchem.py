@@ -4,6 +4,7 @@ from pathlib import Path
 import polars as pl
 from helmkit import load_monomer_library
 from helmkit import Molecule
+from helmkit.molecule import _create_missing_monomer
 from rdkit import Chem
 from tqdm import tqdm
 
@@ -22,6 +23,11 @@ def test():
     monomer_db = load_monomer_library()
     monomer_db_2 = load_monomer_library(data_dir / "monomers.sdf")
     monomer_db.update(monomer_db_2)
+
+    monomer_db["Glp"] = _create_missing_monomer(
+        "O=C1N[C@@H](CC1)C(=O)* |$;;;;;;;;_R2$|"
+    )
+
     errors = []
     reasons = []
     for row in tqdm(df.iter_rows(named=True), total=df.height):
@@ -62,6 +68,8 @@ def test():
         print(reason)
         print("-" * 100)
     print(f"Found {len(errors)} errors")
+    if len(errors) > 0:
+        exit(1)
 
 
 if __name__ == "__main__":
