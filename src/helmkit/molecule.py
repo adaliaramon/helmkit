@@ -12,7 +12,6 @@ from rdkit import Chem
 
 
 class SequenceConstants:
-    helm_polymer = "|"
     max_rgroups = 4
 
 
@@ -95,10 +94,78 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     return monomers_dict
 
 
+def _create_missing_monomer(monomer_name: str) -> Dict:
+    mol = Chem.MolFromSmiles(monomer_name)
+    if mol is None:
+        raise ValueError(
+            f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
+        )
+
+    r_group_map = {}
+    main_atoms = []
+
+    for atom in mol.GetAtoms():
+        idx = atom.GetIdx()
+        label = atom.GetProp("atomLabel") if atom.HasProp("atomLabel") else ""
+
+        if label.startswith("_R"):
+            try:
+                r_num = int(label[2:])
+                atom.SetProp("dummyLabel", f"R{r_num}")
+                atom.SetIntProp("_MolFileRLabel", r_num)
+                atom.SetProp("molFileValue", "*")
+                r_group_map[r_num] = idx
+            except ValueError:
+                continue
+        else:
+            main_atoms.append(idx)
+
+    sorted_r = sorted(r_group_map.items())
+    r_group_idx = [idx for _, idx in sorted_r]
+    mol = Chem.RenumberAtoms(mol, main_atoms + r_group_idx)
+
+    rgroup_idx_full = [None] * SequenceConstants.max_rgroups
+    for i, (r_num, _) in enumerate(sorted_r):
+        if 1 <= r_num <= SequenceConstants.max_rgroups:
+            rgroup_idx_full[r_num - 1] = len(main_atoms) + i
+
+    attachment_points = infer_attachment_points(mol, rgroup_idx_full)
+
+    # rgroup_vals = [
+    #     None if row.get(f"R{i + 1}") == "-" else row.get(f"R{i + 1}")
+    #     for i in range(SequenceConstants.max_rgroups)
+    # ]
+    rgroup_vals = [None] * SequenceConstants.max_rgroups
+
+    mol.SetProp("m_name", monomer_name)
+
+    mol.SetProp("symbol", monomer_name)
+    mol.SetProp("m_abbr", monomer_name)
+    mol.SetProp("m_type", "aa")
+    mol.SetProp("m_subtype", "non-natural")
+    mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx_full)))
+    mol.SetProp("m_Rgroups", ",".join(map(str, rgroup_vals)))
+    mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
+    mol.SetProp("natAnalog", "")
+
+    monomer = {
+        "m_romol": mol,
+        "m_Rgroups": rgroup_vals,
+        "m_RgroupIdx": rgroup_idx_full,
+        "m_attachmentPointIdx": attachment_points,
+        "m_type": "aa",
+        "m_subtype": "non-natural",
+        "m_abbr": monomer_name,
+    }
+    return monomer
+
+
 class Molecule:
     """Single class for HELM to RDKit Mol conversion."""
 
     _bracket_re = re.compile(r"{(.*?)}")
+    _pipe_outside_brackets = re.compile(r"\|(?![^\[]*\])")
+    _dollar_outside_brackets = re.compile(r"\$(?![^\[]*\])")
 
     def __init__(self, helm: str, monomer_df: Optional[Dict] = None):
         """Initialize a Molecule object from a HELM string."""
@@ -107,6 +174,7 @@ class Molecule:
         self.bondlist = []
         self.monomers = []
         self.chain_offset = {}
+        self.has_ambiguous_monomers = False
 
         if monomer_df is None:
             self.monomer_df = load_monomer_library()
@@ -138,21 +206,17 @@ class Molecule:
 
     def _split_helm_sections(self, helm: str) -> List:
         """Split a HELM string into its components."""
-        parts = helm.split("$", 4)
+        parts = self._dollar_outside_brackets.split(helm, 4)
         parts.extend([""] * (5 - len(parts)))
 
         parts[0] = (
-            parts[0].split(SequenceConstants.helm_polymer)
-            if SequenceConstants.helm_polymer in parts[0]
+            self._pipe_outside_brackets.split(parts[0])
+            if "|" in parts[0]
             else [parts[0]]
         )
 
         if parts[1]:
-            parts[1] = (
-                parts[1].split(SequenceConstants.helm_polymer)
-                if SequenceConstants.helm_polymer in parts[1]
-                else [parts[1]]
-            )
+            parts[1] = parts[1].split("|") if "|" in parts[1] else [parts[1]]
         else:
             parts[1] = []
 
@@ -201,10 +265,22 @@ class Molecule:
         self, monomer_name: str, chain_id: int, residue_idx: int
     ) -> Optional[Dict]:
         """Process a single monomer."""
-        monomer_name = re.sub(r"\[(.*)\]", r"\1", monomer_name)
+        monomer_name = (
+            monomer_name[1:-1]
+            if monomer_name.startswith("[") and monomer_name.endswith("]")
+            else monomer_name
+        )
+
+        # Check for (a,[b]) pattern
+        match = re.fullmatch(r"\([^,]+,\[([^\]]+)\]\)", monomer_name)
+        if match:
+            # Extract the 'b' from (a,[b]) and recurse
+            self.has_ambiguous_monomers = True
+            return self._process_monomer(match.group(1), chain_id, residue_idx)
 
         if monomer_name not in self.monomer_df:
-            raise ValueError(f"Monomer {monomer_name} not found in monomer library")
+            monomer = _create_missing_monomer(monomer_name)
+            self.monomer_df[monomer_name] = monomer
 
         monomer_info = self.monomer_df[monomer_name]
 
