@@ -33,6 +33,9 @@ def test():
     monomer_db["Tml"] = _create_missing_monomer(
         "*N[C@@H](CCCC[N+](C)(C)C)C(=O)* |$_R1;;;;;;;;;;;;;_R2$|"
     )
+    monomer_db["Dpr"] = _create_missing_monomer(
+        "*N[C@@H](CN*)C(=O)* |$_R1;;;;;_R3;;;_R2$|"
+    )
 
     errors = []
     reasons = []
