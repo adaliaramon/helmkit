@@ -27,6 +27,9 @@ def test():
     monomer_db["Glp"] = _create_missing_monomer(
         "O=C1N[C@@H](CC1)C(=O)* |$;;;;;;;;_R2$|"
     )
+    ggu = _create_missing_monomer("*N[C@@H](CCC(=O)*)C(=O)* |$_R1;;;;;;;_R2;;;_R3$|")
+    ggu["m_Rgroups"][2] = "OH"
+    monomer_db["Ggu"] = ggu
 
     errors = []
     reasons = []
