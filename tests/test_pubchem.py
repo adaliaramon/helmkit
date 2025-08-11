@@ -36,6 +36,24 @@ def test():
     monomer_db["Dpr"] = _create_missing_monomer(
         "*N[C@@H](CN*)C(=O)* |$_R1;;;;;_R3;;;_R2$|"
     )
+    monomer_db["Har"] = _create_missing_monomer(
+        "C(CCN=C(N)N)C[C@@H](C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|"
+    )
+
+    # Monomers with incorrect formula (extra OH which should be an R-group)
+    monomer_db[
+        "*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
+    ] = _create_missing_monomer(
+        "*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC) |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
+    )
+    monomer_db[
+        "*C(=O)(CCC(C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
+    ] = _create_missing_monomer(
+        "*C(=O)(CCC(C(=O)O)NC(=O)CCCCCCCCCCCCCCC) |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
+    )
+    monomer_db["*C(=O)(CCCC(C(=O)O)N)O |$_R3;;;;;;;;;;;$|"] = _create_missing_monomer(
+        "*C(=O)(CCCC(C(=O)O)N) |$_R3;;;;;;;;;;;$|"
+    )
 
     errors = []
     reasons = []
@@ -62,16 +80,7 @@ def test():
         if inchi1 != inchi2:
             errors.append(row)
             reasons.append(f"{inchi1} != {inchi2}")
-        # assert inchi1 == inchi2, (
-        #     inchi1,
-        #     inchi2,
-        #     helm,
-        #     row["SMILES"],
-        #     draw(m.mol, Chem.MolFromSmiles(row["SMILES"])),
-        # )
     for error, reason in zip(errors, reasons):
-        if not isinstance(reason, str):
-            continue
         print("-" * 100)
         print(error)
         print(reason)
