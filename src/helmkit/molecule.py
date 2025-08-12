@@ -336,7 +336,15 @@ class Molecule:
 
                     # Standard peptide bond is between R2 of previous and R1 of current
                     attachment_point1 = monomer1["m_attachmentPointIdx"][1]
+                    if attachment_point1 is None:
+                        raise ValueError(
+                            f"R-group 2 is not present in monomer {monomer_idx - 1} ({monomer1['m_name']}). Check monomers."
+                        )
                     attachment_point2 = monomer2["m_attachmentPointIdx"][0]
+                    if attachment_point2 is None:
+                        raise ValueError(
+                            f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_name']}). Check monomers."
+                        )
 
                     self.bondlist.append(
                         [
@@ -400,7 +408,15 @@ class Molecule:
             monomer2 = self.monomers[monomer_idx2]
 
             attachment_idx1 = monomer1["m_attachmentPointIdx"][rgroup1 - 1]
+            if attachment_idx1 is None:
+                raise ValueError(
+                    f"R-group {rgroup1} is not present in monomer {monomer_idx1 + 1} ({monomer1['m_name']}). Check connections."
+                )
             attachment_idx2 = monomer2["m_attachmentPointIdx"][rgroup2 - 1]
+            if attachment_idx2 is None:
+                raise ValueError(
+                    f"R-group {rgroup2} is not present in monomer {monomer_idx2 + 1} ({monomer2['m_name']}). Check connections."
+                )
 
             self.bondlist.append(
                 [monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2]
