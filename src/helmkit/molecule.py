@@ -338,12 +338,12 @@ class Molecule:
                     attachment_point1 = monomer1["m_attachmentPointIdx"][1]
                     if attachment_point1 is None:
                         raise ValueError(
-                            f"R-group 2 is not present in monomer {monomer_idx - 1} ({monomer1['m_name']}). Check monomers."
+                            f"R-group 2 is not present in monomer {monomer_idx} ({monomer1['m_name']}). Check monomers."
                         )
                     attachment_point2 = monomer2["m_attachmentPointIdx"][0]
                     if attachment_point2 is None:
                         raise ValueError(
-                            f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_name']}). Check monomers."
+                            f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_name']}). Check monomers."
                         )
 
                     self.bondlist.append(
