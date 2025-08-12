@@ -270,6 +270,8 @@ class Molecule:
             if monomer_name.startswith("[") and monomer_name.endswith("]")
             else monomer_name
         )
+        if monomer_name == "":
+            raise ValueError(f"Monomer {residue_idx + 1} has no name. Check HELM.")
 
         # Check for (a,[b]) pattern
         match = re.fullmatch(r"\([^,]+,\[([^\]]+)\]\)", monomer_name)

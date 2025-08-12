@@ -3,6 +3,8 @@ Dpr,*N[C@@H](CN*)C(=O)* |$_R1;;;;;_R3;;;_R2$|
 Ggu,*N[C@@H](CCC(=O)*)C(=O)* |$_R1;;;;;;;_R2;;;_R3$|,"None,None,OH,None"
 Glp,O=C1N(*)[C@@H](CC1)C(=O)* |$;;;_R1;;;;;;_R2$|
 Har,C(CCN=C(N)N)C[C@@H](C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|
+Hyl,C(C[C@@H](C(=O)O)N)[C@H](CN)O
+M,*CSCC[C@H](N*)C(=O)* |$_R3;;;;;;;_R1;;;_R2$|
 Spg,C1CCC(C1)(C(=O)*)N* |$;;;;;;;_R2;;_R1$|
 Tml,*N[C@@H](CCCC[N+](C)(C)C)C(=O)* |$_R1;;;;;;;;;;;;;_R2$|
 dM,*CSCC[C@@H](N*)C(*)=O |$_R3;;;;;;;_R1;;_R2$|
@@ -14,3 +16,18 @@ c1ccc(cc1)CCC(C(=O)O)N,c1ccc(cc1)CCC(C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|
 *C(=O)C(CCCCCC(=O)(*)O)N* |$_R2;;;;;;;;;;;_R3;;;_R1$|,*C(=O)C(CCCCCC(=O)*)N* |$_R2;;;;;;;;;;;_R3;;_R1$|
 CCCCCNCC=O,CCCCCNCC(=O)* |$;;;;;;;;;_R2$|
 *C(=O)(CCCC[C@@H](C(=O)O)N*)O |$_R3;;;;;;;;;;;;_R1;$|,*C(=O)(CCCC[C@@H](C(=O)O)N*) |$_R3;;;;;;;;;;;;_R1;$|
+*N[C@H](CCC)C=O |$_R1;;;;;;;$|,*N[C@H](CCC)C(=O)* |$_R1;;;;;;;;_R2$|
+*NC(CCC)C=O |$_R1;;;;;;;$|,*NC(CCC)C(=O)* |$_R1;;;;;;;;_R2$|,"None,None,None,None"
+*NC(CC1CC1)C=O |$_R1;;;;;;;;$|,*NC(CC1CC1)C(=O)* |$_R1;;;;;;;;;_R2$|
+*NC(CC=C)C=O |$_R1;;;;;;;$|,*NC(CC=C)C(=O)* |$_R1;;;;;;;;_R2$|,"None,None,None,None"
+*N[C@H](C=O)C(C)O |$_R1;;;;;;;$|,*N[C@H](C(=O)*)C(C)O |$_R1;;;;;_R2;;$|
+*C(=O)(CC(CO)N*)O |$_R3;;;;;;;;_R1;$|,*C(=O)(CC(CO)N*) |$_R3;;;;;;;;_R1;$|
+c1cc(sc1)S(=O)(=O)Nc2ccc(cc2)C=O,c1cc(sc1)S(=O)(=O)Nc2ccc(cc2)C(=O)* |$;;;;;;;;;;;;;;;;;_R2$|
+C(C=C(C(=O)O)N)C(=O)O,C(C=C(C(=O)O)N*)C(=O)O |$;;;;;;;_R1$|
+CC(C)[C@@H](C=O)NC(=O)c1ccc(cc1Cl)Cl,CC(C)[C@@H](C(=O)*)NC(=O)c1ccc(cc1Cl)Cl |$;;;;;;_R2$|
+c1cc(cc(c1)N)C(=O)O,c1cc(cc(c1)N*)C(=O)O |$;;;;;;;_R1$|
+CC(C)[C@H](C=O)NC(=O)c1ccc(cc1Cl)Cl,CC(C)[C@H](C(=O)*)NC(=O)c1ccc(cc1Cl)Cl |$;;;;;;_R2$|
+*N[C@H](CC(=O)O)C(C)CC |$_R1;;;;;;;;;;$|,*N[C@H](CC(=O)O)[C@H](C)CC |$_R1;;;;;;;;;;$|
+*N[C@@H](CC(=O)O)c1ccc(cc1)O |$_R1;;;;;;;;;;;;;$|,*N[C@H](CC(=O)O)c1ccc(cc1)O |$_R1;;;;;;;;;;;;;$|
+*C(=O)CCC(=O)n1cccc1 |$_R2;;;;;;;;;;;$|,*C(=O)CCC(=O)N1CCCC1 |$_R2;;;;;;;;;;;$|
+CC(C)(C)OC(=O)N1CCCC1C=O,CC(C)(C)OC(=O)N1CCCC1C(=O)* |$;;;;;;;;;;;;;;_R2$|,"None,None,None,None"

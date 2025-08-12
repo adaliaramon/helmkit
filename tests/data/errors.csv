@@ -1,3 +1,19 @@
 CID,Reason
 37717,Arginine (R) in HELM but cycloarginine in SMILES/InChI
 231264,Missing connections section but molecule is connected
+551291,Monomer SMILES is wrong
+561381,Empty monomer in HELM
+563044,Empty monomer in HELM
+638217,Invalid SMILES in monomer
+666269,Monomer is missing a cycle
+1617914,Monomer is missing a cycle
+1617915,Monomer is missing a cycle
+1617916,Monomer is missing a cycle
+1617917,Monomer is missing a cycle
+1842008,Monomer is missing a cycle
+1842009,Monomer is missing a cycle
+1842010,Monomer is missing a cycle
+1842011,Monomer is missing a cycle
+1858765,Monomer is missing a cycle
+1858767,Monomer is missing a cycle
+1895411,Monomer is missing a cycle

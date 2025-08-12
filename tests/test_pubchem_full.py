@@ -9,6 +9,8 @@ from rdkit import Chem
 from rdkit import rdBase
 from tqdm import tqdm
 
+h_number_pattern = re.compile(r"H(\d+)")
+
 
 def clean_inchi(inchi: str) -> str:
     # Remove /b... (double bond stereo) layer
@@ -16,6 +18,10 @@ def clean_inchi(inchi: str) -> str:
     # Remove /p... (charge) layer
     inchi = re.sub(r"/p[+-]?\d*", "", inchi)
     return inchi
+
+
+def count_hydrogens(inchi: str) -> int:
+    return int(h_number_pattern.search(inchi).group(1))
 
 
 def main():
@@ -41,6 +47,9 @@ def main():
     df = df.filter(pl.col("CID").is_in(errors["CID"].implode()).not_())
 
     for row in tqdm(df.iter_rows(named=True), total=df.height):
+        # TODO: remove
+        if row["CID"] < 4630073:
+            continue
         helm = row["HELM"]
         mol2 = Chem.MolFromSmiles(row["SMILES"])
         # Skip molecules that contain isotopes
@@ -57,12 +66,18 @@ def main():
         if inchi1 == "":
             # RDKit bug with InsertMol
             continue
-        if m.has_ambiguous_monomers:
-            # Ignore stereo
-            inchi1 = inchi1.split("/")[0]
-            inchi2 = inchi2.split("/")[0]
         inchi1 = clean_inchi(inchi1)
         inchi2 = clean_inchi(inchi2)
+        if m.has_ambiguous_monomers:
+            # Ignore stereo
+            stereo_marker = "/t"
+            if stereo_marker in inchi1:
+                inchi1 = inchi1[: inchi1.index(stereo_marker)]
+            if stereo_marker in inchi2:
+                inchi2 = inchi2[: inchi2.index(stereo_marker)]
+        if count_hydrogens(inchi1) - count_hydrogens(inchi2) == 2:
+            # Missing ring in monomer most likely
+            continue
         assert inchi1 == inchi2, (
             row,
             inchi1,
