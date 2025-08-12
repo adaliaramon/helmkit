@@ -12,3 +12,5 @@ dM,*CSCC[C@@H](N*)C(*)=O |$_R3;;;;;;;_R1;;_R2$|
 C1CC(N(C1)C(=O)O)C=O,C1CC(N(C1)C(=O)O)C(=O)* |$;;;;;;;;;;_R2$|
 c1ccc(cc1)CCC(C(=O)O)N,c1ccc(cc1)CCC(C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|
 *C(=O)C(CCCCCC(=O)(*)O)N* |$_R2;;;;;;;;;;;_R3;;;_R1$|,*C(=O)C(CCCCCC(=O)*)N* |$_R2;;;;;;;;;;;_R3;;_R1$|
+CCCCCNCC=O,CCCCCNCC(=O)* |$;;;;;;;;;_R2$|
+*C(=O)(CCCC[C@@H](C(=O)O)N*)O |$_R3;;;;;;;;;;;;_R1;$|,*C(=O)(CCCC[C@@H](C(=O)O)N*) |$_R3;;;;;;;;;;;;_R1;$|

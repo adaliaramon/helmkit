@@ -6,6 +6,7 @@ from helmkit import load_monomer_library
 from helmkit import Molecule
 from helmkit.molecule import _create_missing_monomer
 from rdkit import Chem
+from rdkit import rdBase
 from tqdm import tqdm
 
 
@@ -37,7 +38,7 @@ def main():
         monomer_db[row["Name"]] = monomer
 
     errors = pl.read_csv(data_dir / "errors.csv")
-    df = df.filter(pl.col("CID").is_in(errors["CID"]).not_())
+    df = df.filter(pl.col("CID").is_in(errors["CID"].implode()).not_())
 
     for row in tqdm(df.iter_rows(named=True), total=df.height):
         helm = row["HELM"]
@@ -51,7 +52,11 @@ def main():
         except:
             print(row)
             raise
-        inchi1 = Chem.MolToInchi(m.mol)
+        with rdBase.BlockLogs():
+            inchi1 = Chem.MolToInchi(m.mol)
+        if inchi1 == "":
+            # RDKit bug with InsertMol
+            continue
         if m.has_ambiguous_monomers:
             # Ignore stereo
             inchi1 = inchi1.split("/")[0]
