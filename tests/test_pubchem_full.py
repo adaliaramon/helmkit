@@ -48,8 +48,8 @@ def main():
 
     for row in tqdm(df.iter_rows(named=True), total=df.height):
         # TODO: remove
-        if row["CID"] < 4630073:
-            continue
+        # if row["CID"] < 5278194:
+        #     continue
         helm = row["HELM"]
         mol2 = Chem.MolFromSmiles(row["SMILES"])
         # Skip molecules that contain isotopes

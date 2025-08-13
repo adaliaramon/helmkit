@@ -130,12 +130,32 @@ def _create_missing_monomer(monomer_name: str) -> Dict:
             rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
     attachment_points = infer_attachment_points(mol, rgroup_idx_full)
-
-    # rgroup_vals = [
-    #     None if row.get(f"R{i + 1}") == "-" else row.get(f"R{i + 1}")
-    #     for i in range(SequenceConstants.max_rgroups)
-    # ]
     rgroup_vals = [None] * SequenceConstants.max_rgroups
+
+    if "_R1" not in monomer_name:
+        amine = Chem.MolFromSmarts("[NX3H2][#6]")
+        matches = mol.GetSubstructMatches(amine)
+        if len(matches) == 1:
+            attachment_id, _ = matches[0]
+
+            mol = Chem.RWMol(mol)
+            mol = Chem.RWMol(mol)
+            new_idx = mol.AddAtom(Chem.Atom(0))
+            mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
+            rgroup_idx_full[0] = new_idx
+            attachment_points[0] = attachment_id
+
+    if "_R2" not in monomer_name:
+        aldehide = Chem.MolFromSmarts("[CX3H1]=O")
+        matches = mol.GetSubstructMatches(aldehide)
+        if len(matches) == 1:
+            attachment_id, _ = matches[0]
+
+            mol = Chem.RWMol(mol)
+            new_idx = mol.AddAtom(Chem.Atom(0))
+            mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
+            rgroup_idx_full[1] = new_idx
+            attachment_points[1] = attachment_id
 
     mol.SetProp("m_name", monomer_name)
 
