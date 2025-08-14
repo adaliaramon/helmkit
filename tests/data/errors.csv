@@ -1,29 +1,39 @@
 CID,Reason
-37717,Arginine (R) in HELM but cycloarginine in SMILES/InChI
-231264,Missing connections section but molecule is connected
-551291,Monomer SMILES is wrong
-561381,Empty monomer in HELM
-563044,Empty monomer in HELM
-638217,Invalid SMILES in monomer
-666269,Monomer is missing a cycle
-1617914,Monomer is missing a cycle
-1617915,Monomer is missing a cycle
-1617916,Monomer is missing a cycle
-1617917,Monomer is missing a cycle
-1842008,Monomer is missing a cycle
-1842009,Monomer is missing a cycle
-1842010,Monomer is missing a cycle
-1842011,Monomer is missing a cycle
-1858765,Monomer is missing a cycle
-1858767,Monomer is missing a cycle
-1895411,Monomer is missing a cycle
-5278194,One of the monomers is missing part of a structure
-5460932,Charge
-5460939,Charge
-7010015,Wrong stereo in monomer
-7010016,Wrong stereo in monomer
-7021417,Wrong stereo in monomer
-7021418,Wrong stereo in monomer
-7023350,Wrong stereo in monomer
-7023351,Wrong stereo in monomer
-9898037,Wrong stereo in monomer
+00037717,Arginine (R) in HELM but cycloarginine in SMILES/InChI
+00231264,Missing connections section but molecule is connected
+00551291,Monomer SMILES is wrong
+00561381,Empty monomer in HELM
+00563044,Empty monomer in HELM
+00638217,Invalid SMILES in monomer
+00666269,Monomer is missing a cycle
+01617914,Monomer is missing a cycle
+01617915,Monomer is missing a cycle
+01617916,Monomer is missing a cycle
+01617917,Monomer is missing a cycle
+01842008,Monomer is missing a cycle
+01842009,Monomer is missing a cycle
+01842010,Monomer is missing a cycle
+01842011,Monomer is missing a cycle
+01858765,Monomer is missing a cycle
+01858767,Monomer is missing a cycle
+01895411,Monomer is missing a cycle
+05278194,One of the monomers is missing part of a structure
+05460932,Charge
+05460939,Charge
+07010015,Wrong stereo in monomer
+07010016,Wrong stereo in monomer
+07021417,Wrong stereo in monomer
+07021418,Wrong stereo in monomer
+07023350,Wrong stereo in monomer
+07023351,Wrong stereo in monomer
+09898037,Wrong stereo in monomer
+09963714,Wrong monomers
+09989704,Wrong stereo in monomer
+09998188,Wrong stereo in monomer
+10024984,Missing stereo in monomer
+10076784,Wrong stereo in monomer
+10134055,Ambiguous monomer
+10499774,Empty monomer in HELM
+10693243,Empty monomer in HELM
+10919436,Empty monomer in HELM
+11144705,Empty monomer in HELM

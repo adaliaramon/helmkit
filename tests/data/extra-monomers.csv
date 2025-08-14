@@ -5,9 +5,12 @@ Glp,O=C1N(*)[C@@H](CC1)C(=O)* |$;;;_R1;;;;;;_R2$|
 Har,C(CCN=C(N)N)C[C@@H](C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|
 Hyl,C(C[C@@H](C(=O)O)N)[C@H](CN)O
 M,*CSCC[C@H](N*)C(=O)* |$_R3;;;;;;;_R1;;;_R2$|
+S,*N[C@@H](C*)C(=O)* |$_R1;;;;_R3;;;_R2$|,"None,OH,OH,None"
 Spg,C1CCC(C1)(C(=O)*)N* |$;;;;;;;_R2;;_R1$|
 Tml,*N[C@@H](CCCC[N+](C)(C)C)C(=O)* |$_R1;;;;;;;;;;;;;_R2$|
 dM,*CSCC[C@@H](N*)C(*)=O |$_R3;;;;;;;_R1;;_R2$|
+dS,*N[C@H](C*)C(=O)* |$_R1;;;;_R3;;;_R2$|,"None,OH,OH,None"
+meK,CN(*)[C@@H](CCCCN*)C(=O)* |$;;_R1;;;;;;;_R3;;;_R2$|
 *N[C@H](CCC)C=O |$_R1;;;;;;;$|,*N[C@H](CCC)C(=O)* |$_R1;;;;;;;;_R2$|
 *NC(CCC)C=O |$_R1;;;;;;;$|,*NC(CCC)C(=O)* |$_R1;;;;;;;;_R2$|,"None,None,None,None"
 *NC(CC1CC1)C=O |$_R1;;;;;;;;$|,*NC(CC1CC1)C(=O)* |$_R1;;;;;;;;;_R2$|
@@ -16,3 +19,4 @@ dM,*CSCC[C@@H](N*)C(*)=O |$_R3;;;;;;;_R1;;_R2$|
 *N[C@H](CC(=O)O)C(C)CC |$_R1;;;;;;;;;;$|,*N[C@H](CC(=O)O)[C@H](C)CC |$_R1;;;;;;;;;;$|
 *N[C@@H](CC(=O)O)c1ccc(cc1)O |$_R1;;;;;;;;;;;;;$|,*N[C@H](CC(=O)O)c1ccc(cc1)O |$_R1;;;;;;;;;;;;;$|
 *C(=O)CCC(=O)n1cccc1 |$_R2;;;;;;;;;;;$|,*C(=O)CCC(=O)N1CCCC1 |$_R2;;;;;;;;;;;$|
+C(C(=O)N)NC(=O)CCl,C(C(=O)N)N(*)C(=O)CCl |$;;;;;_R1$|

@@ -147,10 +147,19 @@ def _create_missing_monomer(monomer_name: str) -> Dict:
     rgroup_vals = [None] * SequenceConstants.max_rgroups
 
     if "_R1" not in monomer_name:
-        amine = Chem.MolFromSmarts("[NX3H2][#6]")
-        matches = mol.GetSubstructMatches(amine)
+        matches = {
+            idx
+            for _, idx, _ in mol.GetSubstructMatches(
+                Chem.MolFromSmarts("[#6][NX3H][#6]")
+            )
+        }
+        if len(matches) == 0:
+            matches = {
+                idx
+                for idx, _ in mol.GetSubstructMatches(Chem.MolFromSmarts("[NX3H2][#6]"))
+            }
         if len(matches) == 1:
-            attachment_id, _ = matches[0]
+            attachment_id = matches.pop()
 
             mol = Chem.RWMol(mol)
             mol = Chem.RWMol(mol)
@@ -160,10 +169,12 @@ def _create_missing_monomer(monomer_name: str) -> Dict:
             attachment_points[0] = attachment_id
 
     if "_R2" not in monomer_name:
-        aldehide = Chem.MolFromSmarts("[CX3H1]=O")
-        matches = mol.GetSubstructMatches(aldehide)
+        aldehyde = Chem.MolFromSmarts("[CX3H1]=O")
+        matches = mol.GetSubstructMatches(aldehyde)
+        if len(matches) == 0:
+            matches = mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3](=O)[OH]"))
         if len(matches) == 1:
-            attachment_id, _ = matches[0]
+            attachment_id, *_ = matches[0]
 
             mol = Chem.RWMol(mol)
             new_idx = mol.AddAtom(Chem.Atom(0))

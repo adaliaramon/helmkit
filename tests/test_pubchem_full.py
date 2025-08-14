@@ -26,7 +26,7 @@ def count_hydrogens(inchi: str) -> int:
 
 def main():
     data_dir = Path(__file__).parent / "data"
-    df = pl.read_csv(data_dir / "CID-Peptides-filtered.csv")
+    df = pl.read_csv(data_dir / "CID-Peptides-filtered-2.csv")
     monomer_db = load_monomer_library()
     monomer_db_2 = load_monomer_library(data_dir / "monomers.sdf")
     monomer_db.update(monomer_db_2)
@@ -49,7 +49,7 @@ def main():
     matches = 0
     for row in tqdm(df.iter_rows(named=True), total=df.height):
         # TODO: remove
-        # if row["CID"] < 5278194:
+        # if row["CID"] < 10919436:
         #     continue
         helm = row["HELM"]
         mol2 = Chem.MolFromSmiles(row["SMILES"])
@@ -60,6 +60,7 @@ def main():
         try:
             m = Molecule(helm, monomer_db)
         except:
+            continue
             print(row)
             raise
         with rdBase.BlockLogs():
@@ -79,6 +80,9 @@ def main():
         if count_hydrogens(inchi1) - count_hydrogens(inchi2) == 2:
             # Missing ring in monomer most likely
             continue
+        if inchi1 == inchi2:
+            matches += 1
+        continue
         assert inchi1 == inchi2, (
             row,
             inchi1,
@@ -89,7 +93,7 @@ def main():
             # Chem.MolToMolBlock(m.mol),
             matches,
         )
-        matches += 1
+    print(f"Success rate: {100 * matches / df.height:.2f}%")
 
 
 if __name__ == "__main__":
