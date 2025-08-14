@@ -8,19 +8,11 @@ M,*CSCC[C@H](N*)C(=O)* |$_R3;;;;;;;_R1;;;_R2$|
 Spg,C1CCC(C1)(C(=O)*)N* |$;;;;;;;_R2;;_R1$|
 Tml,*N[C@@H](CCCC[N+](C)(C)C)C(=O)* |$_R1;;;;;;;;;;;;;_R2$|
 dM,*CSCC[C@@H](N*)C(*)=O |$_R3;;;;;;;_R1;;_R2$|
-*C(=O)(CCC(C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|,*C(=O)(CCC(C(=O)O)NC(=O)CCCCCCCCCCCCCCC) |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|
-*C(=O)(CCCC(C(=O)O)N)O |$_R3;;;;;;;;;;;$|,*C(=O)(CCCC(C(=O)O)N) |$_R3;;;;;;;;;;;$|
-*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|,*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC) |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|
-*C(=O)C(CCCCCC(=O)(*)O)N* |$_R2;;;;;;;;;;;_R3;;;_R1$|,*C(=O)C(CCCCCC(=O)*)N* |$_R2;;;;;;;;;;;_R3;;_R1$|
-*C(=O)(CCCC[C@@H](C(=O)O)N*)O |$_R3;;;;;;;;;;;;_R1;$|,*C(=O)(CCCC[C@@H](C(=O)O)N*) |$_R3;;;;;;;;;;;;_R1;$|
 *N[C@H](CCC)C=O |$_R1;;;;;;;$|,*N[C@H](CCC)C(=O)* |$_R1;;;;;;;;_R2$|
 *NC(CCC)C=O |$_R1;;;;;;;$|,*NC(CCC)C(=O)* |$_R1;;;;;;;;_R2$|,"None,None,None,None"
 *NC(CC1CC1)C=O |$_R1;;;;;;;;$|,*NC(CC1CC1)C(=O)* |$_R1;;;;;;;;;_R2$|
 *NC(CC=C)C=O |$_R1;;;;;;;$|,*NC(CC=C)C(=O)* |$_R1;;;;;;;;_R2$|,"None,None,None,None"
 *N[C@H](C=O)C(C)O |$_R1;;;;;;;$|,*N[C@H](C(=O)*)C(C)O |$_R1;;;;;_R2;;$|
-*C(=O)(CC(CO)N*)O |$_R3;;;;;;;;_R1;$|,*C(=O)(CC(CO)N*) |$_R3;;;;;;;;_R1;$|
 *N[C@H](CC(=O)O)C(C)CC |$_R1;;;;;;;;;;$|,*N[C@H](CC(=O)O)[C@H](C)CC |$_R1;;;;;;;;;;$|
 *N[C@@H](CC(=O)O)c1ccc(cc1)O |$_R1;;;;;;;;;;;;;$|,*N[C@H](CC(=O)O)c1ccc(cc1)O |$_R1;;;;;;;;;;;;;$|
 *C(=O)CCC(=O)n1cccc1 |$_R2;;;;;;;;;;;$|,*C(=O)CCC(=O)N1CCCC1 |$_R2;;;;;;;;;;;$|
-*C(=O)(CC[C@@H](C=O)N)O |$_R3;;;;;;;;;$|,*C(=O)(CC[C@@H](C=O)N) |$_R3;;;;;;;;;$|
-*C(=O)(C[C@H](CO)N*)O |$_R3;;;;;;;;_R1;$|,*C(=O)(C[C@H](CO)N*) |$_R3;;;;;;;;_R1;$|

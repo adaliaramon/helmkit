@@ -46,6 +46,7 @@ def main():
     errors = pl.read_csv(data_dir / "errors.csv")
     df = df.filter(pl.col("CID").is_in(errors["CID"].implode()).not_())
 
+    matches = 0
     for row in tqdm(df.iter_rows(named=True), total=df.height):
         # TODO: remove
         # if row["CID"] < 5278194:
@@ -86,7 +87,9 @@ def main():
             m.bondlist,
             m.offset,
             # Chem.MolToMolBlock(m.mol),
+            matches,
         )
+        matches += 1
 
 
 if __name__ == "__main__":

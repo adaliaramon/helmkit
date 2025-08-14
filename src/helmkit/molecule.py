@@ -9,6 +9,7 @@ from typing import Optional
 from typing import Tuple
 
 from rdkit import Chem
+from rdkit import rdBase
 
 
 class SequenceConstants:
@@ -95,8 +96,21 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
 
 
 def _create_missing_monomer(monomer_name: str) -> Dict:
-    mol = Chem.MolFromSmiles(monomer_name)
+    mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
+        raise ValueError(
+            f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
+        )
+    with rdBase.BlockLogs():
+        error = Chem.SanitizeMol(mol, catchErrors=True)
+    if error == Chem.SanitizeFlags.SANITIZE_PROPERTIES:
+        mol = Chem.RWMol(mol)
+        pattern = Chem.MolFromSmarts("O[CX4]=O")
+        matches = mol.GetSubstructMatches(pattern)
+        for drop_idx, *_ in matches:
+            mol.RemoveAtom(drop_idx)
+        error = Chem.SanitizeMol(mol, catchErrors=True)
+    if error:
         raise ValueError(
             f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
         )
