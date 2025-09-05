@@ -71,13 +71,13 @@ img.save("tripeptide.png")
 HELM (Hierarchical Editing Language for Macromolecules) is a notation for representing complex biomolecules. A basic HELM string has the following format:
 
 ```
-PEPTIDE1{A.R.G}$PEPTIDE2{S.G.T}$PEPTIDE1,PEPTIDE2,1:R1-4:R3$$
+PEPTIDE1{A.R.G}|PEPTIDE2{S.G.C}$PEPTIDE1,PEPTIDE2,1:R1-3:R3$$$V2.0
 ```
 
 Where:
 - `PEPTIDE1{A.R.G}` defines the first chain (a peptide with amino acids A, R, G)
-- `PEPTIDE2{S.G.T}` defines the second chain
-- `PEPTIDE1,PEPTIDE2,1:R1-4:R3` defines a connection between the chains (R1 of residue 1 in PEPTIDE1 connects to R3 of residue 4 in PEPTIDE2)
+- `PEPTIDE2{S.G.C}` defines the second chain
+- `PEPTIDE1,PEPTIDE2,1:R1-3:R3` defines a connection between the chains (R1 of residue 1 in PEPTIDE1 connects to R3 of residue 3 in PEPTIDE2)
 - `$` characters separate different sections of the HELM string
 
 ## Using Custom Monomer Data
