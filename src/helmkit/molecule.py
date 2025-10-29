@@ -457,8 +457,8 @@ class Molecule:
                                 attachment_point2,
                             ]
                         )
-                        self._mark_used_rgroup(monomer_idx - 1, attachment_point1)
-                        self._mark_used_rgroup(monomer_idx, attachment_point2)
+                        self._mark_used_rgroup(monomer_idx - 1, 1)
+                        self._mark_used_rgroup(monomer_idx, 0)
 
                     monomer_idx += 1
             elif polymer_type == "RNA":
@@ -510,8 +510,8 @@ class Molecule:
                                     attachment_point2,
                                 ]
                             )
-                            self._mark_used_rgroup(prev_monomer, attachment_point1)
-                            self._mark_used_rgroup(monomer_idx, attachment_point2)
+                            self._mark_used_rgroup(prev_monomer, r_index)
+                            self._mark_used_rgroup(monomer_idx, 0)
 
                         # Only set prev_monomer if the monomer is not a base
                         if not is_base:
@@ -584,16 +584,13 @@ class Molecule:
                 [monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2]
             )
 
-            self._mark_used_rgroup(monomer_idx1, attachment_idx1)
-            self._mark_used_rgroup(monomer_idx2, attachment_idx2)
+            self._mark_used_rgroup(monomer_idx1, rgroup1)
+            self._mark_used_rgroup(monomer_idx2, rgroup2)
 
-    def _mark_used_rgroup(self, monomer_idx: int, attachment_idx: int) -> None:
+    def _mark_used_rgroup(self, monomer_idx: int, rgroup: int) -> None:
         """Mark an R-group as used based on its attachment point index."""
         monomer = self.monomers[monomer_idx]
-        for i, idx in enumerate(monomer["m_attachmentPointIdx"]):
-            if idx == attachment_idx:
-                monomer["m_Rgroups"][i] = None
-                break
+        monomer["m_Rgroups"][rgroup] = None
 
     def _build_molecule(self) -> None:
         """Build the RDKit molecule from parsed monomer and bond data."""
