@@ -562,6 +562,8 @@ class Molecule:
                 continue
 
             chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = parsed
+            rgroup1 -= 1
+            rgroup2 -= 1
 
             monomer_idx1 = self.residue_reps[chain_id1][residue1]
             monomer_idx2 = self.residue_reps[chain_id2][residue2]
@@ -569,12 +571,12 @@ class Molecule:
             monomer1 = self.monomers[monomer_idx1]
             monomer2 = self.monomers[monomer_idx2]
 
-            attachment_idx1 = monomer1["m_attachmentPointIdx"][rgroup1 - 1]
+            attachment_idx1 = monomer1["m_attachmentPointIdx"][rgroup1]
             if attachment_idx1 is None:
                 raise ValueError(
                     f"R-group {rgroup1} is not present in monomer {monomer_idx1 + 1} ({monomer1['m_name']}). Check connections."
                 )
-            attachment_idx2 = monomer2["m_attachmentPointIdx"][rgroup2 - 1]
+            attachment_idx2 = monomer2["m_attachmentPointIdx"][rgroup2]
             if attachment_idx2 is None:
                 raise ValueError(
                     f"R-group {rgroup2} is not present in monomer {monomer_idx2 + 1} ({monomer2['m_name']}). Check connections."
