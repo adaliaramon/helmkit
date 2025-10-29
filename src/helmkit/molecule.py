@@ -1,6 +1,7 @@
 import multiprocessing
 import re
 import warnings
+from collections import defaultdict
 from functools import lru_cache
 from importlib.resources import files
 from typing import Dict
@@ -67,7 +68,7 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     """Load and prepare monomer data from SDF file."""
     if library_path is None:
         library_path = str(files("helmkit.data") / "monomers.sdf")
-    monomers_dict = {}
+    monomers_dict: Dict[str, Dict[str, dict]] = defaultdict(dict)
     supplier = Chem.SDMolSupplier(library_path, removeHs=False)
 
     for mol in supplier:
@@ -78,16 +79,18 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
         if not symbol:
             continue
 
+        m_type = get_molecule_property(mol, "m_type", "")
+
         rgroups = parse_comma_separated_property(mol, "m_Rgroups")
         rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
         attachment_point_idx = infer_attachment_points(mol, rgroup_idx)
 
-        monomers_dict[symbol] = {
+        monomers_dict[m_type][symbol] = {
             "m_romol": mol,
             "m_Rgroups": rgroups,
             "m_RgroupIdx": rgroup_idx,
             "m_attachmentPointIdx": attachment_point_idx,
-            "m_type": get_molecule_property(mol, "m_type", ""),
+            "m_type": m_type,
             "m_subtype": get_molecule_property(mol, "m_subtype", ""),
             "m_abbr": get_molecule_property(mol, "m_abbr", ""),
         }
@@ -95,7 +98,7 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     return monomers_dict
 
 
-def _create_missing_monomer(monomer_name: str) -> Dict:
+def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> Dict:
     mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
         raise ValueError(
@@ -162,7 +165,6 @@ def _create_missing_monomer(monomer_name: str) -> Dict:
             attachment_id = matches.pop()
 
             mol = Chem.RWMol(mol)
-            mol = Chem.RWMol(mol)
             new_idx = mol.AddAtom(Chem.Atom(0))
             mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
             rgroup_idx_full[0] = new_idx
@@ -186,8 +188,8 @@ def _create_missing_monomer(monomer_name: str) -> Dict:
 
     mol.SetProp("symbol", monomer_name)
     mol.SetProp("m_abbr", monomer_name)
-    mol.SetProp("m_type", "aa")
-    mol.SetProp("m_subtype", "non-natural")
+    mol.SetProp("m_type", m_type)
+    mol.SetProp("m_subtype", "non-natural" if m_type == "aa" else "")
     mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx_full)))
     mol.SetProp("m_Rgroups", ",".join(map(str, rgroup_vals)))
     mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
@@ -198,8 +200,8 @@ def _create_missing_monomer(monomer_name: str) -> Dict:
         "m_Rgroups": rgroup_vals,
         "m_RgroupIdx": rgroup_idx_full,
         "m_attachmentPointIdx": attachment_points,
-        "m_type": "aa",
-        "m_subtype": "non-natural",
+        "m_type": m_type,
+        "m_subtype": "non-natural" if m_type == "aa" else "",
         "m_abbr": monomer_name,
     }
     return monomer
@@ -219,6 +221,7 @@ class Molecule:
         self.bondlist = []
         self.monomers = []
         self.chain_offset = {}
+        self.residue_reps = defaultdict(list)
         self.has_ambiguous_monomers = False
 
         if monomer_df is None:
@@ -267,17 +270,18 @@ class Molecule:
 
         return parts
 
-    def _split_sequence_with_brackets(self, sequence: str) -> List[str]:
+    @staticmethod
+    def _split_sequence_with_brackets(sequence: str) -> List[str]:
         """Split a sequence into individual monomers, respecting brackets."""
         result = []
         current = ""
         bracket_depth = 0
 
         for char in sequence:
-            if char == "[":
+            if char in "[(":
                 bracket_depth += 1
                 current += char
-            elif char == "]":
+            elif char in "])":
                 bracket_depth -= 1
                 current += char
             elif char == "." and bracket_depth == 0:
@@ -291,23 +295,32 @@ class Molecule:
 
         return result
 
-    def _extract_chain_id(self, chain_str: str) -> Tuple[int, bool]:
+    def _extract_chain_id(
+        self, chain_str: str
+    ) -> Tuple[Optional[int], bool, Optional[str]]:
         """Extract chain ID and validate chain type."""
         if chain_str.startswith("CHEM"):
-            return None, False
+            return None, False, None
 
-        if not chain_str.startswith("PEPTIDE"):
-            warnings.warn(f"Non-peptide chain: {chain_str}")
-            return None, False
+        match = re.match(r"([A-Z]+)(\d+)", chain_str)
+        if not match:
+            warnings.warn(f"Invalid chain format: {chain_str}")
+            return None, False, None
+
+        polymer_type = match.group(1)
+        if polymer_type not in ("PEPTIDE", "RNA"):
+            warnings.warn(f"Unsupported polymer type: {polymer_type}")
+            return None, False, None
 
         try:
-            return int(chain_str.replace("PEPTIDE", "")), True
+            chain_id = int(match.group(2))
+            return chain_id, True, polymer_type
         except ValueError:
-            warnings.warn(f"Invalid chain ID: {chain_str}")
-            return None, False
+            warnings.warn(f"Invalid chain ID in: {chain_str}")
+            return None, False, None
 
     def _process_monomer(
-        self, monomer_name: str, chain_id: int, residue_idx: int
+        self, monomer_name: str, chain_id: int, residue_idx: int, polymer_type: str
     ) -> Optional[Dict]:
         """Process a single monomer."""
         monomer_name = (
@@ -323,13 +336,28 @@ class Molecule:
         if match:
             # Extract the 'b' from (a,[b]) and recurse
             self.has_ambiguous_monomers = True
-            return self._process_monomer(match.group(1), chain_id, residue_idx)
+            return self._process_monomer(
+                match.group(1), chain_id, residue_idx, polymer_type
+            )
 
-        if monomer_name not in self.monomer_df:
-            monomer = _create_missing_monomer(monomer_name)
-            self.monomer_df[monomer_name] = monomer
+        if polymer_type == "PEPTIDE":
+            m_type = "aa"
+        elif polymer_type == "RNA":
+            m_type = "rna"
+        else:
+            m_type = "aa"
 
-        monomer_info = self.monomer_df[monomer_name]
+        if m_type in self.monomer_df and monomer_name in self.monomer_df[m_type]:
+            monomer_info = self.monomer_df[m_type][monomer_name]
+        else:
+            try:
+                monomer_info = _create_missing_monomer(monomer_name, m_type)
+                if m_type not in self.monomer_df:
+                    self.monomer_df[m_type] = {}
+                self.monomer_df[m_type][monomer_name] = monomer_info
+            except ValueError as e:
+                warnings.warn(str(e))
+                return None
 
         return {
             "m_name": monomer_name,
@@ -344,6 +372,33 @@ class Molecule:
             "m_abbr": monomer_info["m_abbr"],
         }
 
+    @staticmethod
+    def _parse_rna_string(sequence: str) -> List[str]:
+        result = []
+        current = ""
+        bracket_depth = 0
+
+        for char in sequence:
+            if char in "[(":
+                bracket_depth += 1
+                current += char
+            elif char in "])":
+                bracket_depth -= 1
+                current += char
+            else:
+                current += char
+            if bracket_depth == 0:
+                result.append(current)
+                current = ""
+
+        if current:
+            result.append(current)
+
+        result = [
+            r[1:-1] if r.startswith("[") and r.endswith("]") else r for r in result
+        ]
+        return result
+
     def _process_polymers(self, polymers: List[str]) -> None:
         """Process polymer chains from HELM, creating backbone bonds on the fly."""
         monomer_idx = 0
@@ -356,7 +411,7 @@ class Molecule:
                 continue
 
             id_chain = chain[: match.start()]
-            chain_id, valid = self._extract_chain_id(id_chain)
+            chain_id, valid, polymer_type = self._extract_chain_id(id_chain)
             if not valid:
                 continue
 
@@ -368,43 +423,101 @@ class Molecule:
             residues = self._split_sequence_with_brackets(sequence)
             self.chain_offset[chain_id] = monomer_idx
 
-            for residue_idx, monomer_name in enumerate(residues):
-                monomer = self._process_monomer(monomer_name, chain_id, residue_idx)
-                if not monomer:
-                    continue
-
-                self.monomers.append(monomer)
-
-                # If this is not the first monomer, create a backbone bond to the previous one.
-                if residue_idx > 0:
-                    # Previous monomer is at index monomer_idx - 1, current is at monomer_idx
-                    monomer1 = self.monomers[monomer_idx - 1]
-                    monomer2 = monomer
-
-                    # Standard peptide bond is between R2 of previous and R1 of current
-                    attachment_point1 = monomer1["m_attachmentPointIdx"][1]
-                    if attachment_point1 is None:
-                        raise ValueError(
-                            f"R-group 2 is not present in monomer {monomer_idx} ({monomer1['m_name']}). Check monomers."
-                        )
-                    attachment_point2 = monomer2["m_attachmentPointIdx"][0]
-                    if attachment_point2 is None:
-                        raise ValueError(
-                            f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_name']}). Check monomers."
-                        )
-
-                    self.bondlist.append(
-                        [
-                            monomer_idx - 1,
-                            attachment_point1,
-                            monomer_idx,
-                            attachment_point2,
-                        ]
+            if polymer_type == "PEPTIDE":
+                for residue_idx, monomer_name in enumerate(residues):
+                    monomer = self._process_monomer(
+                        monomer_name, chain_id, residue_idx, polymer_type
                     )
-                    self._mark_used_rgroup(monomer_idx - 1, attachment_point1)
-                    self._mark_used_rgroup(monomer_idx, attachment_point2)
+                    if not monomer:
+                        continue
 
-                monomer_idx += 1
+                    self.monomers.append(monomer)
+                    self.residue_reps[chain_id].append(monomer_idx)
+
+                    if residue_idx > 0:
+                        monomer1 = self.monomers[monomer_idx - 1]
+                        monomer2 = monomer
+
+                        attachment_point1 = monomer1["m_attachmentPointIdx"][1]
+                        if attachment_point1 is None:
+                            raise ValueError(
+                                f"R-group 2 is not present in monomer {monomer_idx} ({monomer1['m_name']}). Check monomers."
+                            )
+                        attachment_point2 = monomer2["m_attachmentPointIdx"][0]
+                        if attachment_point2 is None:
+                            raise ValueError(
+                                f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_name']}). Check monomers."
+                            )
+
+                        self.bondlist.append(
+                            [
+                                monomer_idx - 1,
+                                attachment_point1,
+                                monomer_idx,
+                                attachment_point2,
+                            ]
+                        )
+                        self._mark_used_rgroup(monomer_idx - 1, attachment_point1)
+                        self._mark_used_rgroup(monomer_idx, attachment_point2)
+
+                    monomer_idx += 1
+            elif polymer_type == "RNA":
+                prev_monomer = None
+                for residue_idx, residue in enumerate(residues):
+                    split_residue = self._parse_rna_string(residue)
+                    for subresidue in split_residue:
+                        is_base = subresidue.startswith("(") and subresidue.endswith(
+                            ")"
+                        )
+                        monomer_name = subresidue[1:-1] if is_base else subresidue
+                        monomer_name = (
+                            monomer_name[1:-1]
+                            if monomer_name.startswith("[")
+                            and monomer_name.endswith("]")
+                            else monomer_name
+                        )
+                        monomer = self._process_monomer(
+                            monomer_name, chain_id, residue_idx, polymer_type
+                        )
+
+                        self.monomers.append(monomer)
+                        self.residue_reps[chain_id].append(monomer_idx)
+
+                        if prev_monomer is not None:
+                            monomer1 = self.monomers[prev_monomer]
+                            monomer2 = monomer
+
+                            # Attach to R3 to R1 if the monomer is a base, R2 to R1 otherwise
+                            r_index = 2 if is_base else 1
+                            attachment_point1 = monomer1["m_attachmentPointIdx"][
+                                r_index
+                            ]
+                            if attachment_point1 is None:
+                                raise ValueError(
+                                    f"R-group {r_index} is not present in monomer {prev_monomer} ({monomer1['m_name']}). Check monomers."
+                                )
+                            attachment_point2 = monomer2["m_attachmentPointIdx"][0]
+                            if attachment_point2 is None:
+                                raise ValueError(
+                                    f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_name']}). Check monomers."
+                                )
+
+                            self.bondlist.append(
+                                [
+                                    prev_monomer,
+                                    attachment_point1,
+                                    monomer_idx,
+                                    attachment_point2,
+                                ]
+                            )
+                            self._mark_used_rgroup(prev_monomer, attachment_point1)
+                            self._mark_used_rgroup(monomer_idx, attachment_point2)
+
+                        # Only set prev_monomer if the monomer is not a base
+                        if not is_base:
+                            prev_monomer = monomer_idx
+
+                        monomer_idx += 1
 
     def _parse_connection(self, connection_str: str) -> Optional[Tuple]:
         """Parse a single connection string."""
@@ -416,8 +529,10 @@ class Molecule:
         chain_id1, chain_id2, bond_spec = parts
 
         try:
-            chain_id1 = int(chain_id1.replace("PEPTIDE", ""))
-            chain_id2 = int(chain_id2.replace("PEPTIDE", ""))
+            chain_id1 = re.sub(r"^[A-Z]+", "", chain_id1)
+            chain_id2 = re.sub(r"^[A-Z]+", "", chain_id2)
+            chain_id1 = int(chain_id1)
+            chain_id2 = int(chain_id2)
 
             bond_parts = re.split(r"[-:]", bond_spec)
             if len(bond_parts) != 4:
@@ -448,8 +563,8 @@ class Molecule:
 
             chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = parsed
 
-            monomer_idx1 = self.chain_offset[chain_id1] + residue1
-            monomer_idx2 = self.chain_offset[chain_id2] + residue2
+            monomer_idx1 = self.residue_reps[chain_id1][residue1]
+            monomer_idx2 = self.residue_reps[chain_id2][residue2]
 
             monomer1 = self.monomers[monomer_idx1]
             monomer2 = self.monomers[monomer_idx2]

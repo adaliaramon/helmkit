@@ -2348,10 +2348,10 @@ ac
 ac
 
 >  <m_type>  (40)
-cap
+aa
 
 >  <m_subtype>  (40)
-cap
+aa
 
 >  <m_Rgroups>  (40)
 None,OH,None,None
@@ -2389,10 +2389,10 @@ am
 am
 
 >  <m_type>  (41)
-cap
+aa
 
 >  <m_subtype>  (41)
-cap
+aa
 
 >  <m_Rgroups>  (41)
 H,None,None,None
@@ -2430,10 +2430,10 @@ _Me
 _Me
 
 >  <m_type>  (42)
-cap
+aa
 
 >  <m_subtype>  (42)
-cap
+aa
 
 >  <m_Rgroups>  (42)
 H,None,None,None
@@ -6947,10 +6947,10 @@ MsO
 MsO
 
 >  <m_type>  (114)
-cap
+aa
 
 >  <m_subtype>  (114)
-cap
+aa
 
 >  <m_Rgroups>  (114)
 None,OH,None,None
@@ -8666,10 +8666,10 @@ Cbz
 Cbz
 
 >  <m_type>  (142)
-cap
+aa
 
 >  <m_subtype>  (142)
-cap
+aa
 
 >  <m_Rgroups>  (142)
 None,OH,None,None
@@ -8709,10 +8709,10 @@ _Et
 _Et
 
 >  <m_type>  (143)
-cap
+aa
 
 >  <m_subtype>  (143)
-cap
+aa
 
 >  <m_Rgroups>  (143)
 H,None,None,None
@@ -8754,10 +8754,10 @@ NHEt
 NHEt
 
 >  <m_type>  (144)
-cap
+aa
 
 >  <m_subtype>  (144)
-cap
+aa
 
 >  <m_Rgroups>  (144)
 H,None,None,None
@@ -8799,10 +8799,10 @@ OEt
 OEt
 
 >  <m_type>  (145)
-cap
+aa
 
 >  <m_subtype>  (145)
-cap
+aa
 
 >  <m_Rgroups>  (145)
 H,None,None,None
@@ -8842,10 +8842,10 @@ _OMe
 _OMe
 
 >  <m_type>  (146)
-cap
+aa
 
 >  <m_subtype>  (146)
-cap
+aa
 
 >  <m_Rgroups>  (146)
 H,None,None,None
@@ -8891,10 +8891,10 @@ OtBu
 OtBu
 
 >  <m_type>  (147)
-cap
+aa
 
 >  <m_subtype>  (147)
-cap
+aa
 
 >  <m_Rgroups>  (147)
 H,None,None,None
@@ -8951,10 +8951,10 @@ Tos
 Tos
 
 >  <m_type>  (148)
-cap
+aa
 
 >  <m_subtype>  (148)
-cap
+aa
 
 >  <m_Rgroups>  (148)
 None,OH,None,None
@@ -9084,10 +9084,10 @@ fmoc
 fmoc
 
 >  <m_type>  (150)
-cap
+aa
 
 >  <m_subtype>  (150)
-cap
+aa
 
 >  <m_Rgroups>  (150)
 None,OH,None,None
@@ -9136,10 +9136,10 @@ Mpa
 Mpa
 
 >  <m_type>  (151)
-cap
+aa
 
 >  <m_subtype>  (151)
-cap
+aa
 
 >  <m_Rgroups>  (151)
 None,OH,None,None
@@ -9185,10 +9185,10 @@ Bua
 Bua
 
 >  <m_type>  (152)
-cap
+aa
 
 >  <m_subtype>  (152)
-cap
+aa
 
 >  <m_Rgroups>  (152)
 None,OH,None,None
@@ -9232,10 +9232,10 @@ Glc
 Glc
 
 >  <m_type>  (153)
-cap
+aa
 
 >  <m_subtype>  (153)
-cap
+aa
 
 >  <m_Rgroups>  (153)
 None,OH,None,None
@@ -9281,10 +9281,10 @@ deamino_Cys
 deamino_Cys
 
 >  <m_type>  (154)
-cap
+aa
 
 >  <m_subtype>  (154)
-cap
+aa
 
 >  <m_Rgroups>  (154)
 None,OH,None,None
@@ -9334,10 +9334,10 @@ deamino_Dab
 deamino_Dab
 
 >  <m_type>  (155)
-cap
+aa
 
 >  <m_subtype>  (155)
-cap
+aa
 
 >  <m_Rgroups>  (155)
 H,None,None,None
@@ -9383,10 +9383,10 @@ deamino_Gly_CN
 deamino_Gly_CN
 
 >  <m_type>  (156)
-cap
+aa
 
 >  <m_subtype>  (156)
-cap
+aa
 
 >  <m_Rgroups>  (156)
 None,OH,None,None
@@ -9439,10 +9439,10 @@ deamino_Gly_cPent
 deamino_Gly_cPent
 
 >  <m_type>  (157)
-cap
+aa
 
 >  <m_subtype>  (157)
-cap
+aa
 
 >  <m_Rgroups>  (157)
 None,OH,None,None
@@ -9488,10 +9488,10 @@ deamino_Gly_OH
 deamino_Gly_OH
 
 >  <m_type>  (158)
-cap
+aa
 
 >  <m_subtype>  (158)
-cap
+aa
 
 >  <m_Rgroups>  (158)
 H,None,None,None
@@ -9544,10 +9544,10 @@ deamino_Gly_thien2yl
 deamino_Gly_thien2yl
 
 >  <m_type>  (159)
-cap
+aa
 
 >  <m_subtype>  (159)
-cap
+aa
 
 >  <m_Rgroups>  (159)
 None,OH,None,None
@@ -9667,10 +9667,10 @@ deamino_Ncy
 deamino_Ncy
 
 >  <m_type>  (161)
-cap
+aa
 
 >  <m_subtype>  (161)
-cap
+aa
 
 >  <m_Rgroups>  (161)
 None,OH,None,None
@@ -9729,10 +9729,10 @@ deamino_Phe
 deamino_Phe
 
 >  <m_type>  (162)
-cap
+aa
 
 >  <m_subtype>  (162)
-cap
+aa
 
 >  <m_Rgroups>  (162)
 None,OH,None,None
@@ -9791,10 +9791,10 @@ deamino_Phg_35diMe
 deamino_Phg_35diMe
 
 >  <m_type>  (163)
-cap
+aa
 
 >  <m_subtype>  (163)
-cap
+aa
 
 >  <m_Rgroups>  (163)
 None,OH,None,None
@@ -9844,10 +9844,10 @@ deamino_Leu
 deamino_Leu
 
 >  <m_type>  (164)
-cap
+aa
 
 >  <m_subtype>  (164)
-cap
+aa
 
 >  <m_Rgroups>  (164)
 None,OH,None,None
@@ -9893,10 +9893,10 @@ D_OAla
 D_OAla
 
 >  <m_type>  (165)
-cap
+aa
 
 >  <m_subtype>  (165)
-cap
+aa
 
 >  <m_Rgroups>  (165)
 None,OH,None,None
@@ -9942,10 +9942,10 @@ L_OAla
 L_OAla
 
 >  <m_type>  (166)
-cap
+aa
 
 >  <m_subtype>  (166)
-cap
+aa
 
 >  <m_Rgroups>  (166)
 None,OH,None,None
@@ -9995,10 +9995,10 @@ L_OVal
 L_OVal
 
 >  <m_type>  (167)
-cap
+aa
 
 >  <m_subtype>  (167)
-cap
+aa
 
 >  <m_Rgroups>  (167)
 None,OH,None,None
@@ -10051,10 +10051,10 @@ NHBn_
 NHBn_
 
 >  <m_type>  (168)
-cap
+aa
 
 >  <m_subtype>  (168)
-cap
+aa
 
 >  <m_Rgroups>  (168)
 None,OH,None,None
@@ -10107,10 +10107,10 @@ Bz
 Bz
 
 >  <m_type>  (169)
-cap
+aa
 
 >  <m_subtype>  (169)
-cap
+aa
 
 >  <m_Rgroups>  (169)
 None,OH,None,None
@@ -10150,10 +10150,10 @@ Et_
 Et_
 
 >  <m_type>  (170)
-cap
+aa
 
 >  <m_subtype>  (170)
-cap
+aa
 
 >  <m_Rgroups>  (170)
 None,OH,None,None
@@ -10191,10 +10191,10 @@ Me_
 Me_
 
 >  <m_type>  (171)
-cap
+aa
 
 >  <m_subtype>  (171)
-cap
+aa
 
 >  <m_Rgroups>  (171)
 None,OH,None,None
@@ -10371,10 +10371,10 @@ OMe_
 OMe_
 
 >  <m_type>  (174)
-cap
+aa
 
 >  <m_subtype>  (174)
-cap
+aa
 
 >  <m_Rgroups>  (174)
 None,OH,None,None
@@ -10827,10 +10827,10 @@ M  END
 (2R,3S)-3-amino-5-cyclohexyl-2-hydroxypentanoic acid
 
 >  <symbol>  (181)
-Cap
+aa
 
 >  <m_abbr>  (181)
-Cap
+aa
 
 >  <m_type>  (181)
 aa
@@ -12084,10 +12084,10 @@ _NHBn
 _NHBn
 
 >  <m_type>  (202)
-cap
+aa
 
 >  <m_subtype>  (202)
-cap
+aa
 
 >  <m_Rgroups>  (202)
 H,None,None,None
@@ -12127,10 +12127,10 @@ NHMe
 NHMe
 
 >  <m_type>  (203)
-cap
+aa
 
 >  <m_subtype>  (203)
-cap
+aa
 
 >  <m_Rgroups>  (203)
 H,None,None,None
@@ -15376,10 +15376,10 @@ _Bn
 _Bn
 
 >  <m_type>  (253)
-cap
+aa
 
 >  <m_subtype>  (253)
-cap
+aa
 
 >  <m_Rgroups>  (253)
 H,None,None,None
@@ -15432,10 +15432,10 @@ _OBn
 _OBn
 
 >  <m_type>  (254)
-cap
+aa
 
 >  <m_subtype>  (254)
-cap
+aa
 
 >  <m_Rgroups>  (254)
 H,None,None,None
@@ -15484,10 +15484,10 @@ Ph
 Ph
 
 >  <m_type>  (255)
-cap
+aa
 
 >  <m_subtype>  (255)
-cap
+aa
 
 >  <m_Rgroups>  (255)
 H,None,None,None
@@ -15537,10 +15537,10 @@ Boc
 Boc
 
 >  <m_type>  (256)
-cap
+aa
 
 >  <m_subtype>  (256)
-cap
+aa
 
 >  <m_Rgroups>  (256)
 None,OH,None,None
@@ -15591,10 +15591,10 @@ Mba
 Mba
 
 >  <m_type>  (257)
-cap
+aa
 
 >  <m_subtype>  (257)
-cap
+aa
 
 >  <m_Rgroups>  (257)
 None,OH,None,None
@@ -15644,10 +15644,10 @@ Hva
 Hva
 
 >  <m_type>  (258)
-cap
+aa
 
 >  <m_subtype>  (258)
-cap
+aa
 
 >  <m_Rgroups>  (258)
 None,OH,None,None
@@ -15702,10 +15702,10 @@ deamino_Chg
 deamino_Chg
 
 >  <m_type>  (259)
-cap
+aa
 
 >  <m_subtype>  (259)
-cap
+aa
 
 >  <m_Rgroups>  (259)
 None,OH,None,None
@@ -15775,10 +15775,10 @@ deamino_Dip
 deamino_Dip
 
 >  <m_type>  (260)
-cap
+aa
 
 >  <m_subtype>  (260)
-cap
+aa
 
 >  <m_Rgroups>  (260)
 None,OH,None,None
@@ -15828,10 +15828,10 @@ deamino_Gly_tBu
 deamino_Gly_tBu
 
 >  <m_type>  (261)
-cap
+aa
 
 >  <m_subtype>  (261)
-cap
+aa
 
 >  <m_Rgroups>  (261)
 None,OH,None,None
@@ -15890,10 +15890,10 @@ deamino_hPhe
 deamino_hPhe
 
 >  <m_type>  (262)
-cap
+aa
 
 >  <m_subtype>  (262)
-cap
+aa
 
 >  <m_Rgroups>  (262)
 None,OH,None,None
@@ -15952,10 +15952,10 @@ deamino_nTyr_Me
 deamino_nTyr_Me
 
 >  <m_type>  (263)
-cap
+aa
 
 >  <m_subtype>  (263)
-cap
+aa
 
 >  <m_Rgroups>  (263)
 None,OH,None,None
@@ -16012,10 +16012,10 @@ deamino_Phg_4Cl
 deamino_Phg_4Cl
 
 >  <m_type>  (264)
-cap
+aa
 
 >  <m_subtype>  (264)
-cap
+aa
 
 >  <m_Rgroups>  (264)
 None,OH,None,None
@@ -16065,10 +16065,10 @@ D_OVal
 D_OVal
 
 >  <m_type>  (265)
-cap
+aa
 
 >  <m_subtype>  (265)
-cap
+aa
 
 >  <m_Rgroups>  (265)
 None,OH,None,None
@@ -16120,10 +16120,10 @@ OLeu
 OLeu
 
 >  <m_type>  (266)
-cap
+aa
 
 >  <m_subtype>  (266)
-cap
+aa
 
 >  <m_Rgroups>  (266)
 None,OH,None,None
@@ -16174,10 +16174,10 @@ Bn_
 Bn_
 
 >  <m_type>  (267)
-cap
+aa
 
 >  <m_subtype>  (267)
-cap
+aa
 
 >  <m_Rgroups>  (267)
 None,OH,None,None
@@ -16230,10 +16230,10 @@ OBn_
 OBn_
 
 >  <m_type>  (268)
-cap
+aa
 
 >  <m_subtype>  (268)
-cap
+aa
 
 >  <m_Rgroups>  (268)
 None,OH,None,None
@@ -16287,10 +16287,10 @@ deamino_Lys
 deamino_Lys
 
 >  <m_type>  (269)
-cap
+aa
 
 >  <m_subtype>  (269)
-cap
+aa
 
 >  <m_Rgroups>  (269)
 None,OH,None,None

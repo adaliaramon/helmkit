@@ -22,37 +22,43 @@ def test():
     df = pl.read_ndjson(data_dir / "pubchem.ndjson")
     monomer_db = load_monomer_library()
     monomer_db_2 = load_monomer_library(data_dir / "monomers.sdf")
-    monomer_db.update(monomer_db_2)
 
-    monomer_db["Glp"] = _create_missing_monomer(
+    for m_type in monomer_db:
+        if m_type in monomer_db_2:
+            monomer_db[m_type].update(monomer_db_2[m_type])
+    for m_type in monomer_db_2:
+        if m_type not in monomer_db:
+            monomer_db[m_type] = monomer_db_2[m_type]
+
+    monomer_db["aa"]["Glp"] = _create_missing_monomer(
         "O=C1N[C@@H](CC1)C(=O)* |$;;;;;;;;_R2$|"
     )
     ggu = _create_missing_monomer("*N[C@@H](CCC(=O)*)C(=O)* |$_R1;;;;;;;_R2;;;_R3$|")
     ggu["m_Rgroups"][2] = "OH"
-    monomer_db["Ggu"] = ggu
-    monomer_db["Tml"] = _create_missing_monomer(
+    monomer_db["aa"]["Ggu"] = ggu
+    monomer_db["aa"]["Tml"] = _create_missing_monomer(
         "*N[C@@H](CCCC[N+](C)(C)C)C(=O)* |$_R1;;;;;;;;;;;;;_R2$|"
     )
-    monomer_db["Dpr"] = _create_missing_monomer(
+    monomer_db["aa"]["Dpr"] = _create_missing_monomer(
         "*N[C@@H](CN*)C(=O)* |$_R1;;;;;_R3;;;_R2$|"
     )
-    monomer_db["Har"] = _create_missing_monomer(
+    monomer_db["aa"]["Har"] = _create_missing_monomer(
         "C(CCN=C(N)N)C[C@@H](C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|"
     )
 
     # Monomers with incorrect formula (extra OH which should be an R-group)
-    monomer_db[
+    monomer_db["aa"][
         "*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
     ] = _create_missing_monomer(
         "*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC) |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
     )
-    monomer_db[
+    monomer_db["aa"][
         "*C(=O)(CCC(C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
     ] = _create_missing_monomer(
         "*C(=O)(CCC(C(=O)O)NC(=O)CCCCCCCCCCCCCCC) |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"
     )
-    monomer_db["*C(=O)(CCCC(C(=O)O)N)O |$_R3;;;;;;;;;;;$|"] = _create_missing_monomer(
-        "*C(=O)(CCCC(C(=O)O)N) |$_R3;;;;;;;;;;;$|"
+    monomer_db["aa"]["*C(=O)(CCCC(C(=O)O)N)O |$_R3;;;;;;;;;;;$|"] = (
+        _create_missing_monomer("*C(=O)(CCCC(C(=O)O)N) |$_R3;;;;;;;;;;;$|")
     )
 
     errors = []
@@ -69,6 +75,7 @@ def test():
         except Exception as e:
             errors.append(row)
             reasons.append(e)
+            raise
             continue
         inchi1 = Chem.MolToInchi(m.mol)
         if m.has_ambiguous_monomers:
