@@ -489,12 +489,15 @@ class Molecule:
 
                             # Attach to R3 to R1 if the monomer is a base, R2 to R1 otherwise
                             r_index = 2 if is_base else 1
-                            attachment_point1 = monomer1["m_attachmentPointIdx"][
-                                r_index
-                            ]
+                            try:
+                                attachment_point1 = monomer1["m_attachmentPointIdx"][
+                                    r_index
+                                ]
+                            except IndexError:
+                                attachment_point1 = None
                             if attachment_point1 is None:
                                 raise ValueError(
-                                    f"R-group {r_index} is not present in monomer {prev_monomer} ({monomer1['m_name']}). Check monomers."
+                                    f"R-group {r_index + 1} is not present in monomer {prev_monomer} ({monomer1['m_name']}). Check monomers."
                                 )
                             attachment_point2 = monomer2["m_attachmentPointIdx"][0]
                             if attachment_point2 is None:
