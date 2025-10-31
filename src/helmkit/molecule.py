@@ -4,28 +4,39 @@ import warnings
 from collections import defaultdict
 from functools import lru_cache
 from importlib.resources import files
+from typing import Callable
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Sequence
 from typing import Tuple
+from typing import TypeVar
+from typing import Union
 
 from rdkit import Chem
 from rdkit import rdBase
 
 
 class SequenceConstants:
-    max_rgroups = 4
+    max_rgroups: int = 4
 
 
-def get_molecule_property(molecule: Chem.Mol, property_name: str, default=None):
+def get_molecule_property(
+    molecule: Chem.Mol, property_name: str, default=None
+) -> Optional[str]:
     return (
         molecule.GetProp(property_name) if molecule.HasProp(property_name) else default
     )
 
 
+T = TypeVar("T")
+
+
 def parse_comma_separated_property(
-    molecule: Chem.Mol, property_name: str, convert_func=None
-) -> List:
+    molecule: Chem.Mol,
+    property_name: str,
+    convert_func: Optional[Callable[[str], T]] = None,
+) -> Sequence[Optional[Union[str, T]]]:
     property_value = get_molecule_property(molecule, property_name)
     if not property_value:
         return []
