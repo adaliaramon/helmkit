@@ -10,6 +10,7 @@ from typing import List
 from typing import Optional
 from typing import Sequence
 from typing import Tuple
+from typing import TypedDict
 from typing import TypeVar
 from typing import Union
 
@@ -22,7 +23,7 @@ class SequenceConstants:
 
 
 def get_molecule_property(
-    molecule: Chem.Mol, property_name: str, default=None
+    molecule: Chem.Mol, property_name: str, default: Optional[str] = None
 ) -> Optional[str]:
     return (
         molecule.GetProp(property_name) if molecule.HasProp(property_name) else default
@@ -50,7 +51,9 @@ def parse_comma_separated_property(
     return values
 
 
-def infer_attachment_points(molecule: Chem.Mol, rgroup_indices: List[int]) -> List[int]:
+def infer_attachment_points(
+    molecule: Chem.Mol, rgroup_indices: Sequence[Optional[int]]
+) -> List[int]:
     """Infer attachment points by finding atoms bonded to R-group atoms."""
     attachment_points = []
 
@@ -74,12 +77,25 @@ def infer_attachment_points(molecule: Chem.Mol, rgroup_indices: List[int]) -> Li
     return attachment_points
 
 
+class MonomerData(TypedDict):
+    m_romol: Chem.Mol
+    m_Rgroups: List[str]
+    m_RgroupIdx: List[int]
+    m_attachmentPointIdx: List[int]
+    m_type: str
+    m_subtype: str
+    m_abbr: str
+
+
+MonomerLibrary = Dict[str, Dict[str, MonomerData]]
+
+
 @lru_cache
-def load_monomer_library(library_path: Optional[str] = None) -> Dict:
+def load_monomer_library(library_path: Optional[str] = None) -> MonomerLibrary:
     """Load and prepare monomer data from SDF file."""
     if library_path is None:
         library_path = str(files("helmkit.data") / "monomers.sdf")
-    monomers_dict: Dict[str, Dict[str, dict]] = defaultdict(dict)
+    monomers_dict: MonomerLibrary = defaultdict(dict)
     supplier = Chem.SDMolSupplier(library_path, removeHs=False)
 
     for mol in supplier:
@@ -109,7 +125,7 @@ def load_monomer_library(library_path: Optional[str] = None) -> Dict:
     return monomers_dict
 
 
-def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> Dict:
+def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
     mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
         raise ValueError(
@@ -152,7 +168,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> Dict:
     r_group_idx = [idx for _, idx in sorted_r]
     mol = Chem.RenumberAtoms(mol, main_atoms + r_group_idx)
 
-    rgroup_idx_full = [None] * SequenceConstants.max_rgroups
+    rgroup_idx_full: List[Optional[int]] = [None] * SequenceConstants.max_rgroups
     for i, (r_num, _) in enumerate(sorted_r):
         if 1 <= r_num <= SequenceConstants.max_rgroups:
             rgroup_idx_full[r_num - 1] = len(main_atoms) + i
