@@ -149,7 +149,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> Dict:
     attachment_points = infer_attachment_points(mol, rgroup_idx_full)
     rgroup_vals = [None] * SequenceConstants.max_rgroups
 
-    if "_R1" not in monomer_name:
+    if m_type == "aa" and "_R1" not in monomer_name:
         matches = {
             idx
             for _, idx, _ in mol.GetSubstructMatches(
@@ -170,7 +170,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> Dict:
             rgroup_idx_full[0] = new_idx
             attachment_points[0] = attachment_id
 
-    if "_R2" not in monomer_name:
+    if m_type == "aa" and "_R2" not in monomer_name:
         aldehyde = Chem.MolFromSmarts("[CX3H1]=O")
         matches = mol.GetSubstructMatches(aldehyde)
         if len(matches) == 0:
