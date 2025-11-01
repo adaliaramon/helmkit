@@ -241,7 +241,7 @@ class Molecule:
     _pipe_outside_brackets = re.compile(r"\|(?![^\[]*\])")
     _dollar_outside_brackets = re.compile(r"\$(?![^\[]*\])")
 
-    def __init__(self, helm: str, monomer_df: Optional[Dict] = None):
+    def __init__(self, helm: str, monomer_df: Optional[MonomerLibrary] = None):
         """Initialize a Molecule object from a HELM string."""
         self.mol = None
         self.offset = []
@@ -285,7 +285,7 @@ class Molecule:
         self._process_connections(connection_sections)
         self._process_hydrogen_bonds(hydrogen_bonds_sections)
 
-    def _split_helm_sections(self, helm: str) -> List:
+    def _split_helm_sections(self, helm: str) -> List[Union[str, List[str]]]:
         """Split a HELM string into its components."""
         parts = self._dollar_outside_brackets.split(helm, 4)
         parts.extend([""] * (5 - len(parts)))
@@ -359,7 +359,7 @@ class Molecule:
 
     def _process_monomer(
         self, monomer_name: str, chain_id: int, residue_idx: int, polymer_type: str
-    ) -> Optional[Dict]:
+    ) -> Optional[MonomerData]:
         """Process a single monomer."""
         monomer_name = (
             monomer_name[1:-1]
@@ -560,7 +560,9 @@ class Molecule:
 
                         monomer_idx += 1
 
-    def _parse_connection(self, connection_str: str) -> Optional[Tuple]:
+    def _parse_connection(
+        self, connection_str: str
+    ) -> Optional[Tuple[int, int, int, int, int, int]]:
         """Parse a single connection string."""
         parts = connection_str.split(",")
         if len(parts) != 3:
@@ -723,7 +725,7 @@ class Molecule:
         self.mol = Chem.DeleteSubstructs(self.mol, Chem.MolFromSmarts("[#0]"))
 
 
-def _init_pool(monomer_df: Dict):
+def _init_pool(monomer_df: MonomerLibrary):
     global _monomer_df
     _monomer_df = monomer_df
 
@@ -733,7 +735,9 @@ def _load_peptide(helm: str) -> Molecule:
 
 
 def load_peptides_in_parallel(
-    helms: List[str], monomer_df: Optional[Dict] = None, chunksize: Optional[int] = 256
+    helms: List[str],
+    monomer_df: Optional[MonomerLibrary] = None,
+    chunksize: Optional[int] = 256,
 ) -> List[Molecule]:
     if monomer_df is None:
         monomer_df = load_monomer_library()
