@@ -250,6 +250,7 @@ class Molecule:
         self.chain_offset = {}
         self.residue_reps = defaultdict(list)
         self.has_ambiguous_monomers = False
+        self.hydrogen_bonds = []
 
         if monomer_df is None:
             self.monomer_df = load_monomer_library()
@@ -270,7 +271,11 @@ class Molecule:
             warnings.warn(f"Problem with HELM string - not enough sections: {helm}")
             return
 
-        polymer_sections, connection_sections = helm_parts[0], helm_parts[1]
+        polymer_sections, connection_sections, hydrogen_bonds_sections = (
+            helm_parts[0],
+            helm_parts[1],
+            helm_parts[2],
+        )
 
         if not polymer_sections:
             warnings.warn(f"No simple polymers in HELM string {helm}")
@@ -278,6 +283,7 @@ class Molecule:
 
         self._process_polymers(polymer_sections)
         self._process_connections(connection_sections)
+        self._process_hydrogen_bonds(hydrogen_bonds_sections)
 
     def _split_helm_sections(self, helm: str) -> List:
         """Split a HELM string into its components."""
@@ -294,6 +300,11 @@ class Molecule:
             parts[1] = parts[1].split("|") if "|" in parts[1] else [parts[1]]
         else:
             parts[1] = []
+
+        if parts[2]:
+            parts[2] = parts[2].split("|") if "|" in parts[2] else [parts[2]]
+        else:
+            parts[2] = []
 
         return parts
 
@@ -618,6 +629,28 @@ class Molecule:
 
             self._mark_used_rgroup(monomer_idx1, rgroup1)
             self._mark_used_rgroup(monomer_idx2, rgroup2)
+
+    def _process_hydrogen_bonds(self, connections: List[str]) -> None:
+        """Process hydrogen bonds."""
+        if not connections:
+            return
+
+        for connection_str in connections:
+            chain_id1, chain_id2, bond_spec = list(connection_str.split(","))
+            chain_id1 = re.sub(r"^[A-Z]+", "", chain_id1)
+            chain_id2 = re.sub(r"^[A-Z]+", "", chain_id2)
+            chain_id1 = int(chain_id1)
+            chain_id2 = int(chain_id2)
+
+            bond_parts = re.split(r"[-:]", bond_spec)
+            if len(bond_parts) != 4:
+                warnings.warn(f"Invalid hydrogen bond format: {bond_spec}")
+                return None
+
+            residue1, _, residue2, _ = bond_parts
+            residue1 = int(residue1) - 1
+            residue2 = int(residue2) - 1
+            self.hydrogen_bonds.append([chain_id1, residue1, chain_id2, residue2])
 
     def _mark_used_rgroup(self, monomer_idx: int, rgroup: int) -> None:
         """Mark an R-group as used based on its attachment point index."""
