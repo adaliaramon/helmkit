@@ -337,16 +337,13 @@ class Molecule:
         self, chain_str: str
     ) -> Tuple[Optional[int], bool, Optional[str]]:
         """Extract chain ID and validate chain type."""
-        if chain_str.startswith("CHEM"):
-            return None, False, None
-
         match = re.match(r"([A-Z]+)(\d+)", chain_str)
         if not match:
             warnings.warn(f"Invalid chain format: {chain_str}")
             return None, False, None
 
         polymer_type = match.group(1)
-        if polymer_type not in ("PEPTIDE", "RNA"):
+        if polymer_type not in ("PEPTIDE", "RNA", "CHEM"):
             warnings.warn(f"Unsupported polymer type: {polymer_type}")
             return None, False, None
 
@@ -382,6 +379,8 @@ class Molecule:
             m_type = "aa"
         elif polymer_type == "RNA":
             m_type = "rna"
+        elif polymer_type == "CHEM":
+            m_type = "chem"
         else:
             m_type = "aa"
 
@@ -559,6 +558,22 @@ class Molecule:
                             prev_monomer = monomer_idx
 
                         monomer_idx += 1
+            elif polymer_type == "CHEM":
+                if len(residues) != 1:
+                    raise ValueError("CHEM polymers must have exactly one residue")
+                monomer_name = residues[0]
+                residue_idx = 0
+                monomer_name = (
+                    monomer_name[1:-1]
+                    if monomer_name.startswith("[") and monomer_name.endswith("]")
+                    else monomer_name
+                )
+                monomer = self._process_monomer(
+                    monomer_name, chain_id, residue_idx, polymer_type
+                )
+                self.monomers.append(monomer)
+                self.residue_reps[chain_id].append(monomer_idx)
+                monomer_idx += 1
 
     def _parse_connection(
         self, connection_str: str
