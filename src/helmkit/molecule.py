@@ -335,7 +335,7 @@ class Molecule:
 
     def _extract_chain_id(
         self, chain_str: str
-    ) -> Tuple[Optional[int], bool, Optional[str]]:
+    ) -> Tuple[Optional[str], bool, Optional[str]]:
         """Extract chain ID and validate chain type."""
         match = re.match(r"([A-Z]+)(\d+)", chain_str)
         if not match:
@@ -348,14 +348,14 @@ class Molecule:
             return None, False, None
 
         try:
-            chain_id = int(match.group(2))
+            chain_id = chain_str
             return chain_id, True, polymer_type
         except ValueError:
             warnings.warn(f"Invalid chain ID in: {chain_str}")
             return None, False, None
 
     def _process_monomer(
-        self, monomer_name: str, chain_id: int, residue_idx: int, polymer_type: str
+        self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
     ) -> Optional[MonomerData]:
         """Process a single monomer."""
         monomer_name = (
@@ -451,6 +451,9 @@ class Molecule:
             chain_id, valid, polymer_type = self._extract_chain_id(id_chain)
             if not valid:
                 continue
+
+            if chain_id in self.chain_offset:
+                raise ValueError(f"Duplicate chain ID: {chain_id}")
 
             sequence = match.group(1)
             if not sequence:
@@ -577,7 +580,7 @@ class Molecule:
 
     def _parse_connection(
         self, connection_str: str
-    ) -> Optional[Tuple[int, int, int, int, int, int]]:
+    ) -> Optional[Tuple[str, int, int, str, int, int]]:
         """Parse a single connection string."""
         parts = connection_str.split(",")
         if len(parts) != 3:
@@ -587,11 +590,6 @@ class Molecule:
         chain_id1, chain_id2, bond_spec = parts
 
         try:
-            chain_id1 = re.sub(r"^[A-Z]+", "", chain_id1)
-            chain_id2 = re.sub(r"^[A-Z]+", "", chain_id2)
-            chain_id1 = int(chain_id1)
-            chain_id2 = int(chain_id2)
-
             bond_parts = re.split(r"[-:]", bond_spec)
             if len(bond_parts) != 4:
                 warnings.warn(f"Invalid bond format: {bond_spec}")
@@ -653,16 +651,16 @@ class Molecule:
             return
 
         for connection_str in connections:
-            chain_id1, chain_id2, bond_spec = list(connection_str.split(","))
-            chain_id1 = re.sub(r"^[A-Z]+", "", chain_id1)
-            chain_id2 = re.sub(r"^[A-Z]+", "", chain_id2)
-            chain_id1 = int(chain_id1)
-            chain_id2 = int(chain_id2)
+            parts = connection_str.split(",")
+            if len(parts) != 3:
+                warnings.warn(f"Invalid hydrogen bond format: {connection_str}")
+                continue
+            chain_id1, chain_id2, bond_spec = parts
 
             bond_parts = re.split(r"[-:]", bond_spec)
             if len(bond_parts) != 4:
                 warnings.warn(f"Invalid hydrogen bond format: {bond_spec}")
-                return None
+                continue
 
             residue1, _, residue2, _ = bond_parts
             residue1 = int(residue1) - 1
