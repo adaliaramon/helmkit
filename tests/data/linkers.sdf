@@ -103,3 +103,46 @@ H,H,None,None
 
 >  <natAnalog>
 A
+
+$$$$
+Fake
+     RDKit          2D
+
+  5  4  0  0  1  0  0  0  0  0999 V2000
+    2.0158    2.5281    0.0000 R#  0  0  0  0  0  0  0  0  0  0  0  0
+    1.4380   -1.3101    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0
+    0.1298    5.0296    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0
+   -2.1990    2.9196    0.0000 S   0  0  0  0  0  0  0  0  0  0  0  0
+   -9.7115   -2.6762    0.0000 R#  0  0  0  0  0  0  0  0  0  0  0  0
+  1  2  1  0
+  2  3  1  0
+  3  4  1  0
+  4  5  1  0
+M  RGP  2   1   1   5   2
+V    1 *
+V    5 *
+M  END
+
+>  <m_name>
+Fake
+
+>  <symbol>
+FAKE
+
+>  <m_abbr>
+FAKE
+
+>  <m_type>
+chem
+
+>  <m_subtype>
+non-natural
+
+>  <m_RgroupIdx>
+0,4,None,None
+
+>  <m_Rgroups>
+H,H,None,None
+
+>  <natAnalog>
+X
