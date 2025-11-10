@@ -18,7 +18,9 @@ def main():
     helm = "PEPTIDE1{A.L}|RNA1{p.r(U)}|CHEM1{PAD4}$PEPTIDE1,CHEM1,2:R2-1:R1|RNA1,CHEM1,1:R1-1:R2$${}$V2.0"
     molecule = Molecule(helm, monomer_df=monomer_library)
     AllChem.Compute2DCoords(molecule.mol)
-    Draw.MolToImage(molecule.mol, size=(800, 800)).show()
+    Draw.MolToImage(
+        molecule.mol, size=(800, 800), highlightBonds=molecule.get_broken_bond_idx()
+    ).show()
     exit()
 
     helm = "PEPTIDE1{C.A.L}|RNA1{p.r(U)}|CHEM1{FAKE}$PEPTIDE1,CHEM1,1:R3-1:R1|RNA1,CHEM1,1:R1-1:R2$${}$V2.0"

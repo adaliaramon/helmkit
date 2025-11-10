@@ -735,7 +735,22 @@ class Molecule:
 
     def _sanitize(self) -> None:
         """Clean up the molecule by removing dummy atoms."""
-        self.mol = Chem.DeleteSubstructs(self.mol, Chem.MolFromSmarts("[#0]"))
+        pattern = Chem.MolFromSmarts("[#0]")
+        matches = self.mol.GetSubstructMatches(pattern)
+        atoms_to_delete = sorted({idx for match in matches for idx in match})
+        self.mol = Chem.DeleteSubstructs(self.mol, pattern)
+        self.offset = [
+            offset - sum(d <= offset for d in atoms_to_delete) for offset in self.offset
+        ]
+
+    def get_broken_bond_idx(self) -> List[int]:
+        return [
+            self.mol.GetBondBetweenAtoms(
+                self.offset[monomer1_idx] + atom1_idx,
+                self.offset[monomer2_idx] + atom2_idx,
+            ).GetIdx()
+            for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist
+        ]
 
 
 def _init_pool(monomer_df: MonomerLibrary):
