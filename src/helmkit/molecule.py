@@ -1,3 +1,4 @@
+import bisect
 import multiprocessing
 import re
 import warnings
@@ -739,8 +740,20 @@ class Molecule:
         matches = self.mol.GetSubstructMatches(pattern)
         atoms_to_delete = sorted({idx for match in matches for idx in match})
         self.mol = Chem.DeleteSubstructs(self.mol, pattern)
+
+        def correction(offset: int, idx: int) -> int:
+            return bisect.bisect_left(atoms_to_delete, idx) - bisect.bisect_left(
+                atoms_to_delete, offset
+            )
+
+        for i, (m1, a1, m2, a2) in enumerate(self.bondlist):
+            offset1 = self.offset[m1]
+            offset2 = self.offset[m2]
+            self.bondlist[i][1] -= correction(offset1, offset1 + a1)
+            self.bondlist[i][3] -= correction(offset2, offset2 + a2)
+
         self.offset = [
-            offset - sum(d <= offset for d in atoms_to_delete) for offset in self.offset
+            offset - sum(d < offset for d in atoms_to_delete) for offset in self.offset
         ]
 
     def get_broken_bond_idx(self) -> List[int]:
