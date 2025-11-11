@@ -756,13 +756,21 @@ class Molecule:
             offset - sum(d < offset for d in atoms_to_delete) for offset in self.offset
         ]
 
-    def get_broken_bond_idx(self) -> List[int]:
+    @property
+    def bond_indices(self) -> List[int]:
         return [
             self.mol.GetBondBetweenAtoms(
                 self.offset[monomer1_idx] + atom1_idx,
                 self.offset[monomer2_idx] + atom2_idx,
             ).GetIdx()
             for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist
+        ]
+
+    @property
+    def monomer_indices(self) -> List[int]:
+        return [
+            bisect.bisect_right(self.offset, i) - 1
+            for i in range(self.mol.GetNumAtoms())
         ]
 
 
