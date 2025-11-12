@@ -29,7 +29,7 @@ def main():
     df = pl.read_csv(data_dir / "CID-Peptides-filtered-2.csv")
     monomer_db = load_monomer_library()
     monomer_db_2 = load_monomer_library(data_dir / "monomers.sdf")
-    monomer_db.update(monomer_db_2)
+    monomer_db["aa"].update(monomer_db_2["aa"])
 
     for row in pl.read_csv(data_dir / "extra-monomers.csv").iter_rows(named=True):
         smiles = row["SMILES"]
@@ -60,7 +60,7 @@ def main():
         try:
             m = Molecule(helm, monomer_db)
         except:
-            continue
+            # continue
             print(row)
             raise
         with rdBase.BlockLogs():
