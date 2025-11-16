@@ -779,11 +779,11 @@ def _init_pool(monomer_df: MonomerLibrary):
     _monomer_df = monomer_df
 
 
-def _load_peptide(helm: str) -> Molecule:
+def _load_helm(helm: str) -> Molecule:
     return Molecule(helm, _monomer_df)
 
 
-def load_peptides_in_parallel(
+def load_in_parallel(
     helms: List[str],
     monomer_df: Optional[MonomerLibrary] = None,
     chunksize: Optional[int] = 256,
@@ -791,4 +791,4 @@ def load_peptides_in_parallel(
     if monomer_df is None:
         monomer_df = load_monomer_library()
     with multiprocessing.Pool(initializer=_init_pool, initargs=(monomer_df,)) as pool:
-        return pool.map(_load_peptide, helms, chunksize=chunksize)
+        return pool.map(_load_helm, helms, chunksize=chunksize)

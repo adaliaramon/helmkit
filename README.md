@@ -142,7 +142,7 @@ For workflows involving a large number of peptides, `helmkit` provides a functio
 
 ```python
 from helmkit import load_monomer_library
-from helmkit import load_peptides_in_parallel
+from helmkit import load_in_parallel
 
 # Load your custom monomer data (optional)
 custom_sdf_path = "/path/to/your/custom_monomers.sdf"
@@ -152,7 +152,7 @@ monomer_db = load_monomer_library(custom_sdf_path)
 helm_strings = ["PEPTIDE1{A.R.G}$$$$", "PEPTIDE1{S.G.T}$$$$"]
 
 # Process peptides in parallel
-molecules = load_peptides_in_parallel(helm_strings, monomer_db)
+molecules = load_in_parallel(helm_strings, monomer_db)
 ```
 
 ## Development Setup
