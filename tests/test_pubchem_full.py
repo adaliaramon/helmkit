@@ -41,7 +41,7 @@ def main():
         for i, r in enumerate(r_groups):
             if r != "None":
                 monomer["m_Rgroups"][i] = r
-        monomer_db[row["Name"]] = monomer
+        monomer_db["aa"][row["Name"]] = monomer
 
     errors = pl.read_csv(data_dir / "errors.csv")
     df = df.filter(pl.col("CID").is_in(errors["CID"].implode()).not_())
