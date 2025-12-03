@@ -129,6 +129,8 @@ def load_monomer_library(library_path: Optional[str] = None) -> MonomerLibrary:
 def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
     mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
+        if monomer_name.endswith("|") and not monomer_name.endswith("$|"):
+            return _create_missing_monomer(monomer_name[:-1] + "$|", m_type)
         raise ValueError(
             f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
         )
