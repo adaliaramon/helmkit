@@ -21,14 +21,6 @@ def test():
     data_dir = Path(__file__).parent / "data"
     df = pl.read_ndjson(data_dir / "pubchem.ndjson")
     monomer_db = load_monomer_library()
-    monomer_db_2 = load_monomer_library(data_dir / "monomers.sdf")
-
-    for m_type in monomer_db:
-        if m_type in monomer_db_2:
-            monomer_db[m_type].update(monomer_db_2[m_type])
-    for m_type in monomer_db_2:
-        if m_type not in monomer_db:
-            monomer_db[m_type] = monomer_db_2[m_type]
 
     monomer_db["aa"]["Glp"] = _create_missing_monomer(
         "O=C1N[C@@H](CC1)C(=O)* |$;;;;;;;;_R2$|"

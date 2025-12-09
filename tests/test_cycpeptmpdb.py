@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import polars as pl
-from helmkit import load_monomer_library
 from helmkit import Molecule
 from rdkit import Chem
 from tqdm import tqdm
@@ -23,8 +22,6 @@ def test():
     if USE_PYPEPT:
         monomer_lib_dir = str(data_dir.relative_to(Path.cwd()))
         monomer_lib = "monomers.sdf"
-    else:
-        monomer_db = load_monomer_library(data_dir / "monomers.sdf")
 
     errors = []
     for row in tqdm(df.iter_rows(named=True), total=df.height):
@@ -36,7 +33,7 @@ def test():
                 sequence = Sequence(converter.get_biln(), monomer_lib_dir, monomer_lib)
                 m = Molecule(sequence)
             else:
-                m = Molecule(helm, monomer_db)
+                m = Molecule(helm)
             inchi1 = Chem.MolToInchi(m.mol)
             other = Chem.MolFromSmiles(smiles)
             inchi2 = Chem.MolToInchi(other)
