@@ -492,14 +492,12 @@ class Molecule:
                                 f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_name']}). Check monomers."
                             )
 
-                        self.bondlist.append(
-                            [
-                                monomer_idx - 1,
-                                attachment_point1,
-                                monomer_idx,
-                                attachment_point2,
-                            ]
-                        )
+                        self.bondlist.append([
+                            monomer_idx - 1,
+                            attachment_point1,
+                            monomer_idx,
+                            attachment_point2,
+                        ])
                         self._mark_used_rgroup(monomer_idx - 1, 1)
                         self._mark_used_rgroup(monomer_idx, 0)
 
@@ -548,14 +546,12 @@ class Molecule:
                                     f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_name']}). Check monomers."
                                 )
 
-                            self.bondlist.append(
-                                [
-                                    prev_monomer,
-                                    attachment_point1,
-                                    monomer_idx,
-                                    attachment_point2,
-                                ]
-                            )
+                            self.bondlist.append([
+                                prev_monomer,
+                                attachment_point1,
+                                monomer_idx,
+                                attachment_point2,
+                            ])
                             self._mark_used_rgroup(prev_monomer, r_index)
                             self._mark_used_rgroup(monomer_idx, 0)
 
@@ -641,9 +637,12 @@ class Molecule:
                     f"R-group {rgroup2} is not present in monomer {monomer_idx2 + 1} ({monomer2['m_name']}). Check connections."
                 )
 
-            self.bondlist.append(
-                [monomer_idx1, attachment_idx1, monomer_idx2, attachment_idx2]
-            )
+            self.bondlist.append([
+                monomer_idx1,
+                attachment_idx1,
+                monomer_idx2,
+                attachment_idx2,
+            ])
 
             self._mark_used_rgroup(monomer_idx1, rgroup1)
             self._mark_used_rgroup(monomer_idx2, rgroup2)

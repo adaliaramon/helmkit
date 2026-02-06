@@ -36,3 +36,10 @@ exclude = [
     "dev",
     "tests",
 ]
+
+[tool.ruff]
+# Enable preview features.
+preview = true
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true
