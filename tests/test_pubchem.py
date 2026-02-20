@@ -13,8 +13,7 @@ def clean_inchi(inchi: str) -> str:
     # Remove /b... (double bond stereo) layer
     inchi = re.sub(r"/b[^/]+", "", inchi)
     # Remove /p... (charge) layer
-    inchi = re.sub(r"/p[+-]?\d*", "", inchi)
-    return inchi
+    return re.sub(r"/p[+-]?\d*", "", inchi)
 
 
 def test():
@@ -86,7 +85,7 @@ def test():
         print("-" * 100)
     print(f"Found {len(errors)} errors")
     if len(errors) > 0:
-        exit(1)
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

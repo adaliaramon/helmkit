@@ -21,7 +21,7 @@ def main():
     Draw.MolToImage(
         molecule.mol, size=(800, 800), highlightBonds=molecule.get_broken_bond_idx()
     ).show()
-    exit()
+    raise SystemExit(0)
 
     helm = "PEPTIDE1{C.A.L}|RNA1{p.r(U)}|CHEM1{FAKE}$PEPTIDE1,CHEM1,1:R3-1:R1|RNA1,CHEM1,1:R1-1:R2$${}$V2.0"
     molecule = Molecule(helm, monomer_df=monomer_library)

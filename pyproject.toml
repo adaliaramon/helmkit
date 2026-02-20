@@ -41,5 +41,8 @@ exclude = [
 # Enable preview features.
 preview = true
 
+[tool.ruff.lint]
+ignore = ["I001", "N999"]
+
 [tool.ruff.format]
 skip-magic-trailing-comma = true

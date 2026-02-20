@@ -16,8 +16,7 @@ def clean_inchi(inchi: str) -> str:
     # Remove /b... (double bond stereo) layer
     inchi = re.sub(r"/b[^/]+", "", inchi)
     # Remove /p... (charge) layer
-    inchi = re.sub(r"/p[+-]?\d*", "", inchi)
-    return inchi
+    return re.sub(r"/p[+-]?\d*", "", inchi)
 
 
 def count_hydrogens(inchi: str) -> int:

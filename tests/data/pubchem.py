@@ -9,12 +9,11 @@ from tqdm import tqdm
 def get_helm(cid: int) -> str:
     url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug_view/data/compound/{cid}/JSON/"
     r = requests.get(url).json()
-    helm = next(
+    return next(
         s
         for s in r["Record"]["Section"][1]["Section"][1]["Information"]
         if s["Name"] == "HELM"
     )["Value"]["StringWithMarkup"][0]["String"]
-    return helm
 
 
 def main():

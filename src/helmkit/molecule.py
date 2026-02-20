@@ -3,17 +3,12 @@ import multiprocessing
 import re
 import warnings
 from collections import defaultdict
+from collections.abc import Callable
+from collections.abc import Sequence
 from functools import lru_cache
 from importlib.resources import files
-from typing import Callable
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Sequence
-from typing import Tuple
 from typing import TypedDict
 from typing import TypeVar
-from typing import Union
 
 from rdkit import Chem
 from rdkit import rdBase
@@ -24,8 +19,8 @@ class SequenceConstants:
 
 
 def get_molecule_property(
-    molecule: Chem.Mol, property_name: str, default: Optional[str] = None
-) -> Optional[str]:
+    molecule: Chem.Mol, property_name: str, default: str | None = None
+) -> str | None:
     return (
         molecule.GetProp(property_name) if molecule.HasProp(property_name) else default
     )
@@ -37,8 +32,8 @@ T = TypeVar("T")
 def parse_comma_separated_property(
     molecule: Chem.Mol,
     property_name: str,
-    convert_func: Optional[Callable[[str], T]] = None,
-) -> Sequence[Optional[Union[str, T]]]:
+    convert_func: Callable[[str], T] | None = None,
+) -> Sequence[str | T | None]:
     property_value = get_molecule_property(molecule, property_name)
     if not property_value:
         return []
@@ -53,8 +48,8 @@ def parse_comma_separated_property(
 
 
 def infer_attachment_points(
-    molecule: Chem.Mol, rgroup_indices: Sequence[Optional[int]]
-) -> List[int]:
+    molecule: Chem.Mol, rgroup_indices: Sequence[int | None]
+) -> list[int]:
     """Infer attachment points by finding atoms bonded to R-group atoms."""
     attachment_points = []
 
@@ -80,19 +75,19 @@ def infer_attachment_points(
 
 class MonomerData(TypedDict):
     m_romol: Chem.Mol
-    m_Rgroups: List[str]
-    m_RgroupIdx: List[int]
-    m_attachmentPointIdx: List[int]
+    m_Rgroups: list[str]
+    m_RgroupIdx: list[int]
+    m_attachmentPointIdx: list[int]
     m_type: str
     m_subtype: str
     m_abbr: str
 
 
-MonomerLibrary = Dict[str, Dict[str, MonomerData]]
+MonomerLibrary = dict[str, dict[str, MonomerData]]
 
 
 @lru_cache
-def load_monomer_library(library_path: Optional[str] = None) -> MonomerLibrary:
+def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
     """Load and prepare monomer data from SDF file."""
     if library_path is None:
         library_path = str(files("helmkit.data") / "monomers.sdf")
@@ -171,7 +166,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     r_group_idx = [idx for _, idx in sorted_r]
     mol = Chem.RenumberAtoms(mol, main_atoms + r_group_idx)
 
-    rgroup_idx_full: List[Optional[int]] = [None] * SequenceConstants.max_rgroups
+    rgroup_idx_full: list[int | None] = [None] * SequenceConstants.max_rgroups
     for i, (r_num, _) in enumerate(sorted_r):
         if 1 <= r_num <= SequenceConstants.max_rgroups:
             rgroup_idx_full[r_num - 1] = len(main_atoms) + i
@@ -225,7 +220,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
     mol.SetProp("natAnalog", "")
 
-    monomer = {
+    return {
         "m_romol": mol,
         "m_Rgroups": rgroup_vals,
         "m_RgroupIdx": rgroup_idx_full,
@@ -234,7 +229,6 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         "m_subtype": "non-natural" if m_type == "aa" else "",
         "m_abbr": monomer_name,
     }
-    return monomer
 
 
 class Molecule:
@@ -244,7 +238,7 @@ class Molecule:
     _pipe_outside_brackets = re.compile(r"\|(?![^\[]*\])")
     _dollar_outside_brackets = re.compile(r"\$(?![^\[]*\])")
 
-    def __init__(self, helm: str, monomer_df: Optional[MonomerLibrary] = None):
+    def __init__(self, helm: str, monomer_df: MonomerLibrary | None = None):
         """Initialize a Molecule object from a HELM string."""
         self.mol = None
         self.offset = []
@@ -264,7 +258,7 @@ class Molecule:
         self._build_molecule()
 
         if not isinstance(self.mol, Chem.rdchem.Mol):
-            raise RuntimeError("Failed to initialize RDKit Mol object")
+            raise TypeError("Failed to initialize RDKit Mol object")
 
     def _parse_helm_string(self, helm: str) -> None:
         """Parse a HELM string into molecular components."""
@@ -288,7 +282,7 @@ class Molecule:
         self._process_connections(connection_sections)
         self._process_hydrogen_bonds(hydrogen_bonds_sections)
 
-    def _split_helm_sections(self, helm: str) -> List[Union[str, List[str]]]:
+    def _split_helm_sections(self, helm: str) -> list[str | list[str]]:
         """Split a HELM string into its components."""
         parts = self._dollar_outside_brackets.split(helm, 4)
         parts.extend([""] * (5 - len(parts)))
@@ -312,7 +306,7 @@ class Molecule:
         return parts
 
     @staticmethod
-    def _split_sequence_with_brackets(sequence: str) -> List[str]:
+    def _split_sequence_with_brackets(sequence: str) -> list[str]:
         """Split a sequence into individual monomers, respecting brackets."""
         result = []
         current = ""
@@ -336,9 +330,7 @@ class Molecule:
 
         return result
 
-    def _extract_chain_id(
-        self, chain_str: str
-    ) -> Tuple[Optional[str], bool, Optional[str]]:
+    def _extract_chain_id(self, chain_str: str) -> tuple[str | None, bool, str | None]:
         """Extract chain ID and validate chain type."""
         match = re.match(r"([A-Z]+)(\d+)", chain_str)
         if not match:
@@ -349,17 +341,12 @@ class Molecule:
         if polymer_type not in ("PEPTIDE", "RNA", "CHEM"):
             warnings.warn(f"Unsupported polymer type: {polymer_type}")
             return None, False, None
-
-        try:
-            chain_id = chain_str
-            return chain_id, True, polymer_type
-        except ValueError:
-            warnings.warn(f"Invalid chain ID in: {chain_str}")
-            return None, False, None
+        else:
+            return chain_str, True, polymer_type
 
     def _process_monomer(
         self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
-    ) -> Optional[MonomerData]:
+    ) -> MonomerData | None:
         """Process a single monomer."""
         monomer_name = (
             monomer_name[1:-1]
@@ -413,7 +400,7 @@ class Molecule:
         }
 
     @staticmethod
-    def _parse_rna_string(sequence: str) -> List[str]:
+    def _parse_rna_string(sequence: str) -> list[str]:
         result = []
         current = ""
         bracket_depth = 0
@@ -434,12 +421,9 @@ class Molecule:
         if current:
             result.append(current)
 
-        result = [
-            r[1:-1] if r.startswith("[") and r.endswith("]") else r for r in result
-        ]
-        return result
+        return [r[1:-1] if r.startswith("[") and r.endswith("]") else r for r in result]
 
-    def _process_polymers(self, polymers: List[str]) -> None:
+    def _process_polymers(self, polymers: list[str]) -> None:
         """Process polymer chains from HELM, creating backbone bonds on the fly."""
         monomer_idx = 0
 
@@ -579,7 +563,7 @@ class Molecule:
 
     def _parse_connection(
         self, connection_str: str
-    ) -> Optional[Tuple[str, int, int, str, int, int]]:
+    ) -> tuple[str, int, int, str, int, int] | None:
         """Parse a single connection string."""
         parts = connection_str.split(",")
         if len(parts) != 3:
@@ -600,13 +584,13 @@ class Molecule:
             residue2 = int(residue2) - 1
             rgroup1 = int(rgroup1.replace("R", ""))
             rgroup2 = int(rgroup2.replace("R", ""))
-
-            return chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2
         except (ValueError, IndexError) as e:
             warnings.warn(f"Error parsing connection {connection_str}: {e}")
             return None
+        else:
+            return chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2
 
-    def _process_connections(self, connections: List[str]) -> None:
+    def _process_connections(self, connections: list[str]) -> None:
         """Process connections between chains."""
         if not connections:
             return
@@ -647,7 +631,7 @@ class Molecule:
             self._mark_used_rgroup(monomer_idx1, rgroup1)
             self._mark_used_rgroup(monomer_idx2, rgroup2)
 
-    def _process_hydrogen_bonds(self, connections: List[str]) -> None:
+    def _process_hydrogen_bonds(self, connections: list[str]) -> None:
         """Process hydrogen bonds."""
         if not connections:
             return
@@ -730,7 +714,7 @@ class Molecule:
             try:
                 oxygen_atom = Chem.Atom(8)  # Oxygen
                 rdkit_mol.ReplaceAtom(absolute_idx, oxygen_atom)
-            except Exception as e:
+            except (RuntimeError, OverflowError) as e:
                 warnings.warn(f"Failed to replace R-group with OH: {e}")
         elif atom_type != "H":
             warnings.warn(f"Unrecognized R-group type: {atom_type}")
@@ -758,7 +742,7 @@ class Molecule:
         ]
 
     @property
-    def bond_indices(self) -> List[int]:
+    def bond_indices(self) -> list[int]:
         return [
             self.mol.GetBondBetweenAtoms(
                 self.offset[monomer1_idx] + atom1_idx,
@@ -768,7 +752,7 @@ class Molecule:
         ]
 
     @property
-    def monomer_indices(self) -> List[int]:
+    def monomer_indices(self) -> list[int]:
         return [
             bisect.bisect_right(self.offset, i) - 1
             for i in range(self.mol.GetNumAtoms())
@@ -785,10 +769,10 @@ def _load_helm(helm: str) -> Molecule:
 
 
 def load_in_parallel(
-    helms: List[str],
-    monomer_df: Optional[MonomerLibrary] = None,
-    chunksize: Optional[int] = 256,
-) -> List[Molecule]:
+    helms: list[str],
+    monomer_df: MonomerLibrary | None = None,
+    chunksize: int | None = 256,
+) -> list[Molecule]:
     if monomer_df is None:
         monomer_df = load_monomer_library()
     with multiprocessing.Pool(initializer=_init_pool, initargs=(monomer_df,)) as pool:
