@@ -103,6 +103,11 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
             continue
 
         m_type = get_molecule_property(mol, "m_type", "")
+        if m_type not in ["aa", "rna", "chem"]:
+            warnings.warn(
+                f"Monomer {symbol} has unknown type {m_type} and will be skipped"
+            )
+            continue
 
         rgroups = parse_comma_separated_property(mol, "m_Rgroups")
         rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
