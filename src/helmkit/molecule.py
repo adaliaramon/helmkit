@@ -330,19 +330,17 @@ class Molecule:
 
         return result
 
-    def _extract_chain_id(self, chain_str: str) -> tuple[str | None, bool, str | None]:
-        """Extract chain ID and validate chain type."""
+    def _extract_chain_id(self, chain_str: str) -> tuple[str, str]:
+        """Extract chain ID and return (chain_id, polymer_type)."""
         match = re.match(r"([A-Z]+)(\d+)", chain_str)
         if not match:
-            warnings.warn(f"Invalid chain format: {chain_str}")
-            return None, False, None
+            raise ValueError(f"Invalid chain format: {chain_str}")
 
         polymer_type = match.group(1)
-        if polymer_type not in ("PEPTIDE", "RNA", "CHEM"):
-            warnings.warn(f"Unsupported polymer type: {polymer_type}")
-            return None, False, None
-        else:
-            return chain_str, True, polymer_type
+        if polymer_type not in {"PEPTIDE", "RNA", "CHEM"}:
+            raise ValueError(f"Unsupported polymer type: {polymer_type}")
+
+        return chain_str, polymer_type
 
     def _process_monomer(
         self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
@@ -435,9 +433,7 @@ class Molecule:
                 continue
 
             id_chain = chain[: match.start()]
-            chain_id, valid, polymer_type = self._extract_chain_id(id_chain)
-            if not valid:
-                continue
+            chain_id, polymer_type = self._extract_chain_id(id_chain)
 
             if chain_id in self.chain_offset:
                 raise ValueError(f"Duplicate chain ID: {chain_id}")
