@@ -7,6 +7,7 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from functools import lru_cache
 from importlib.resources import files
+from typing import overload
 from typing import TypedDict
 from typing import TypeVar
 
@@ -29,27 +30,36 @@ def get_molecule_property(
 T = TypeVar("T")
 
 
+@overload
+def parse_comma_separated_property(
+    molecule: Chem.Mol, property_name: str, convert_func: None = None
+) -> list[str | None]: ...
+
+
+@overload
+def parse_comma_separated_property(
+    molecule: Chem.Mol, property_name: str, convert_func: Callable[[str], T]
+) -> list[T | None]: ...
+
+
 def parse_comma_separated_property(
     molecule: Chem.Mol,
     property_name: str,
     convert_func: Callable[[str], T] | None = None,
-) -> Sequence[str | T | None]:
+) -> list[str | None] | list[T | None]:
     property_value = get_molecule_property(molecule, property_name)
     if not property_value:
         return []
 
     values = property_value.split(",")
     if convert_func:
-        values = [convert_func(v) if v != "None" else None for v in values]
-    else:
-        values = [None if v == "None" else v for v in values]
-
-    return values
+        return [convert_func(v) if v != "None" else None for v in values]
+    return [None if v == "None" else v for v in values]
 
 
 def infer_attachment_points(
     molecule: Chem.Mol, rgroup_indices: Sequence[int | None]
-) -> list[int]:
+) -> list[int | None]:
     """Infer attachment points by finding atoms bonded to R-group atoms."""
     attachment_points = []
 
@@ -75,9 +85,9 @@ def infer_attachment_points(
 
 class MonomerData(TypedDict):
     m_romol: Chem.Mol
-    m_Rgroups: list[str]
-    m_RgroupIdx: list[int]
-    m_attachmentPointIdx: list[int]
+    m_Rgroups: list[str | None]
+    m_RgroupIdx: list[int | None]
+    m_attachmentPointIdx: list[int | None]
     m_type: str
     m_subtype: str
     m_abbr: str
@@ -267,16 +277,8 @@ class Molecule:
 
     def _parse_helm_string(self, helm: str) -> None:
         """Parse a HELM string into molecular components."""
-        helm_parts = self._split_helm_sections(helm)
-
-        if len(helm_parts) < 5:
-            warnings.warn(f"Problem with HELM string - not enough sections: {helm}")
-            return
-
-        polymer_sections, connection_sections, hydrogen_bonds_sections = (
-            helm_parts[0],
-            helm_parts[1],
-            helm_parts[2],
+        polymer_sections, connection_sections, hydrogen_bonds_sections, _, _ = (
+            self._split_helm_sections(helm)
         )
 
         if not polymer_sections:
@@ -287,28 +289,21 @@ class Molecule:
         self._process_connections(connection_sections)
         self._process_hydrogen_bonds(hydrogen_bonds_sections)
 
-    def _split_helm_sections(self, helm: str) -> list[str | list[str]]:
-        """Split a HELM string into its components."""
+    def _split_helm_sections(
+        self, helm: str
+    ) -> tuple[list[str], list[str], list[str], str, str]:
         parts = self._dollar_outside_brackets.split(helm, 4)
         parts.extend([""] * (5 - len(parts)))
 
-        parts[0] = (
+        polymers = (
             self._pipe_outside_brackets.split(parts[0])
             if "|" in parts[0]
             else [parts[0]]
         )
+        connections = parts[1].split("|") if parts[1] else []
+        hydrogen_bonds = parts[2].split("|") if parts[2] else []
 
-        if parts[1]:
-            parts[1] = parts[1].split("|") if "|" in parts[1] else [parts[1]]
-        else:
-            parts[1] = []
-
-        if parts[2]:
-            parts[2] = parts[2].split("|") if "|" in parts[2] else [parts[2]]
-        else:
-            parts[2] = []
-
-        return parts
+        return polymers, connections, hydrogen_bonds, parts[3], parts[4]
 
     @staticmethod
     def _split_sequence_with_brackets(sequence: str) -> list[str]:
@@ -762,6 +757,9 @@ class Molecule:
             bisect.bisect_right(self.offset, i) - 1
             for i in range(self.mol.GetNumAtoms())
         ]
+
+
+_monomer_df: MonomerLibrary | None = None
 
 
 def _init_pool(monomer_df: MonomerLibrary):
