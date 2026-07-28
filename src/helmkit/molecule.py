@@ -89,7 +89,6 @@ class MonomerData(TypedDict):
     m_RgroupIdx: list[int | None]
     m_attachmentPointIdx: list[int | None]
     m_type: str
-    m_subtype: str
     m_abbr: str
 
 
@@ -123,14 +122,17 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
         rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
         attachment_point_idx = infer_attachment_points(mol, rgroup_idx)
 
+        abbr = get_molecule_property(mol, "m_abbr", "")
+        if not abbr:
+            continue
+
         monomers_dict[m_type][symbol] = {
             "m_romol": mol,
             "m_Rgroups": rgroups,
             "m_RgroupIdx": rgroup_idx,
             "m_attachmentPointIdx": attachment_point_idx,
             "m_type": m_type,
-            "m_subtype": get_molecule_property(mol, "m_subtype", ""),
-            "m_abbr": get_molecule_property(mol, "m_abbr", ""),
+            "m_abbr": abbr,
         }
 
     return monomers_dict
@@ -224,12 +226,9 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
             rgroup_idx_full[1] = new_idx
             attachment_points[1] = attachment_id
 
-    mol.SetProp("m_name", monomer_name)
-
     mol.SetProp("symbol", monomer_name)
     mol.SetProp("m_abbr", monomer_name)
     mol.SetProp("m_type", m_type)
-    mol.SetProp("m_subtype", "non-natural" if m_type == "aa" else "")
     mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx_full)))
     mol.SetProp("m_Rgroups", ",".join(map(str, rgroup_vals)))
     mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
@@ -241,7 +240,6 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         "m_RgroupIdx": rgroup_idx_full,
         "m_attachmentPointIdx": attachment_points,
         "m_type": m_type,
-        "m_subtype": "non-natural" if m_type == "aa" else "",
         "m_abbr": monomer_name,
     }
 
@@ -385,15 +383,11 @@ class Molecule:
                 return None
 
         return {
-            "m_name": monomer_name,
-            "m_chainID": chain_id,
-            "m_resID": residue_idx,
             "m_romol": monomer_info["m_romol"],
             "m_Rgroups": monomer_info["m_Rgroups"][:],
             "m_RgroupIdx": monomer_info["m_RgroupIdx"],
             "m_attachmentPointIdx": monomer_info["m_attachmentPointIdx"],
             "m_type": monomer_info["m_type"],
-            "m_subtype": monomer_info["m_subtype"],
             "m_abbr": monomer_info["m_abbr"],
         }
 
@@ -464,12 +458,12 @@ class Molecule:
                         attachment_point1 = monomer1["m_attachmentPointIdx"][1]
                         if attachment_point1 is None:
                             raise ValueError(
-                                f"R-group 2 is not present in monomer {monomer_idx} ({monomer1['m_name']}). Check monomers."
+                                f"R-group 2 is not present in monomer {monomer_idx} ({monomer1['m_abbr']}). Check monomers."
                             )
                         attachment_point2 = monomer2["m_attachmentPointIdx"][0]
                         if attachment_point2 is None:
                             raise ValueError(
-                                f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_name']}). Check monomers."
+                                f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_abbr']}). Check monomers."
                             )
 
                         self.bondlist.append([
@@ -518,12 +512,12 @@ class Molecule:
                                 attachment_point1 = None
                             if attachment_point1 is None:
                                 raise ValueError(
-                                    f"R-group {r_index + 1} is not present in monomer {prev_monomer} ({monomer1['m_name']}). Check monomers."
+                                    f"R-group {r_index + 1} is not present in monomer {prev_monomer} ({monomer1['m_abbr']}). Check monomers."
                                 )
                             attachment_point2 = monomer2["m_attachmentPointIdx"][0]
                             if attachment_point2 is None:
                                 raise ValueError(
-                                    f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_name']}). Check monomers."
+                                    f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_abbr']}). Check monomers."
                                 )
 
                             self.bondlist.append([
@@ -609,12 +603,12 @@ class Molecule:
             attachment_idx1 = monomer1["m_attachmentPointIdx"][rgroup1]
             if attachment_idx1 is None:
                 raise ValueError(
-                    f"R-group {rgroup1} is not present in monomer {monomer_idx1 + 1} ({monomer1['m_name']}). Check connections."
+                    f"R-group {rgroup1} is not present in monomer {monomer_idx1 + 1} ({monomer1['m_abbr']}). Check connections."
                 )
             attachment_idx2 = monomer2["m_attachmentPointIdx"][rgroup2]
             if attachment_idx2 is None:
                 raise ValueError(
-                    f"R-group {rgroup2} is not present in monomer {monomer_idx2 + 1} ({monomer2['m_name']}). Check connections."
+                    f"R-group {rgroup2} is not present in monomer {monomer_idx2 + 1} ({monomer2['m_abbr']}). Check connections."
                 )
 
             self.bondlist.append([
