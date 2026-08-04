@@ -46,3 +46,7 @@ ignore = ["I001", "N999"]
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
+
+[tool.ty.src]
+include = ["src"]
+exclude = ["tests"]
