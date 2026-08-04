@@ -342,7 +342,7 @@ class Molecule:
 
     def _process_monomer(
         self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
-    ) -> MonomerData | None:
+    ) -> MonomerData:
         """Process a single monomer."""
         monomer_name = (
             monomer_name[1:-1]
@@ -373,14 +373,10 @@ class Molecule:
         if m_type in self.monomer_df and monomer_name in self.monomer_df[m_type]:
             monomer_info = self.monomer_df[m_type][monomer_name]
         else:
-            try:
-                monomer_info = _create_missing_monomer(monomer_name, m_type)
-                if m_type not in self.monomer_df:
-                    self.monomer_df[m_type] = {}
-                self.monomer_df[m_type][monomer_name] = monomer_info
-            except ValueError as e:
-                warnings.warn(str(e))
-                return None
+            monomer_info = _create_missing_monomer(monomer_name, m_type)
+            if m_type not in self.monomer_df:
+                self.monomer_df[m_type] = {}
+            self.monomer_df[m_type][monomer_name] = monomer_info
 
         return {
             "m_romol": monomer_info["m_romol"],
