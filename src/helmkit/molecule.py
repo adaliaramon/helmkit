@@ -189,7 +189,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
             rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
     attachment_points = infer_attachment_points(mol, rgroup_idx_full)
-    rgroup_vals = [None] * SequenceConstants.max_rgroups
+    rgroup_vals: list[str | None] = [None] * SequenceConstants.max_rgroups
 
     if m_type == "aa" and "_R1" not in monomer_name:
         matches = {

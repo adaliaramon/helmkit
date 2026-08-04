@@ -50,3 +50,9 @@ skip-magic-trailing-comma = true
 [tool.ty.src]
 include = ["src"]
 exclude = ["tests"]
+
+[tool.pyrefly]
+project-includes = [
+    "**/*.py*",
+    "**/*.ipynb",
+]
