@@ -253,7 +253,7 @@ class Molecule:
 
     def __init__(self, helm: str, monomer_df: MonomerLibrary | None = None):
         """Initialize a Molecule object from a HELM string."""
-        self.mol = None
+        self._mol = None
         self.offset = []
         self.bondlist = []
         self.monomers = []
@@ -270,8 +270,13 @@ class Molecule:
         self._parse_helm_string(helm)
         self._build_molecule()
 
-        if not isinstance(self.mol, Chem.rdchem.Mol):
+        if not isinstance(self._mol, Chem.rdchem.Mol):
             raise TypeError("Failed to initialize RDKit Mol object")
+
+    @property
+    def mol(self) -> Chem.Mol:
+        assert self._mol is not None
+        return self._mol
 
     def _parse_helm_string(self, helm: str) -> None:
         """Parse a HELM string into molecular components."""
@@ -647,30 +652,30 @@ class Molecule:
     def _build_molecule(self) -> None:
         """Build the RDKit molecule from parsed monomer and bond data."""
         if not self.monomers:
-            self.mol = Chem.RWMol()
+            self._mol = Chem.RWMol()
             return
 
         monomer = self.monomers[0]
-        self.mol = Chem.RWMol(monomer["m_romol"])
+        self._mol = Chem.RWMol(monomer["m_romol"])
 
         rgroups = monomer["m_Rgroups"]
         rgroup_idx = monomer["m_RgroupIdx"]
         for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
             if rgroups[i] is not None:
-                self._replace_rgroup(self.mol, 0, rgroup_idx[i], rgroups[i])
+                self._replace_rgroup(self._mol, 0, rgroup_idx[i], rgroups[i])
 
-        current_offset = self.mol.GetNumAtoms()
+        current_offset = self._mol.GetNumAtoms()
         self.offset = [0, current_offset]
 
         for monomer in self.monomers[1:]:
-            self.mol.InsertMol(monomer["m_romol"])
+            self._mol.InsertMol(monomer["m_romol"])
 
             rgroups = monomer["m_Rgroups"]
             rgroup_idx = monomer["m_RgroupIdx"]
             for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
                 if rgroups[i] is not None:
                     self._replace_rgroup(
-                        self.mol, current_offset, rgroup_idx[i], rgroups[i]
+                        self._mol, current_offset, rgroup_idx[i], rgroups[i]
                     )
 
             atom_count = monomer["m_romol"].GetNumAtoms()
@@ -710,7 +715,7 @@ class Molecule:
         pattern = Chem.MolFromSmarts("[#0]")
         matches = self.mol.GetSubstructMatches(pattern)
         atoms_to_delete = sorted({idx for match in matches for idx in match})
-        self.mol = Chem.DeleteSubstructs(self.mol, pattern)
+        self._mol = Chem.DeleteSubstructs(self._mol, pattern)
 
         def correction(offset: int, idx: int) -> int:
             return bisect.bisect_left(atoms_to_delete, idx) - bisect.bisect_left(
