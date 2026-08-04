@@ -52,7 +52,4 @@ include = ["src"]
 exclude = ["tests"]
 
 [tool.pyrefly]
-project-includes = [
-    "**/*.py*",
-    "**/*.ipynb",
-]
+project-includes = ["src/**/*.py"]
