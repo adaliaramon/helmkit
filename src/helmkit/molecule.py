@@ -15,8 +15,7 @@ from rdkit import Chem
 from rdkit import rdBase
 
 
-class SequenceConstants:
-    max_rgroups: int = 4
+MAX_RGROUPS = 4
 
 
 def get_molecule_property(
@@ -183,13 +182,13 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     r_group_idx = [idx for _, idx in sorted_r]
     mol = Chem.RenumberAtoms(mol, main_atoms + r_group_idx)
 
-    rgroup_idx_full: list[int | None] = [None] * SequenceConstants.max_rgroups
+    rgroup_idx_full: list[int | None] = [None] * MAX_RGROUPS
     for i, (r_num, _) in enumerate(sorted_r):
-        if 1 <= r_num <= SequenceConstants.max_rgroups:
+        if 1 <= r_num <= MAX_RGROUPS:
             rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
     attachment_points = infer_attachment_points(mol, rgroup_idx_full)
-    rgroup_vals: list[str | None] = [None] * SequenceConstants.max_rgroups
+    rgroup_vals: list[str | None] = [None] * MAX_RGROUPS
 
     if m_type == "aa" and "_R1" not in monomer_name:
         matches = {
@@ -660,7 +659,7 @@ class Molecule:
 
         rgroups = monomer["m_Rgroups"]
         rgroup_idx = monomer["m_RgroupIdx"]
-        for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
+        for i in range(min(len(rgroups), MAX_RGROUPS)):
             if rgroups[i] is not None:
                 self._replace_rgroup(self._mol, 0, rgroup_idx[i], rgroups[i])
 
@@ -672,7 +671,7 @@ class Molecule:
 
             rgroups = monomer["m_Rgroups"]
             rgroup_idx = monomer["m_RgroupIdx"]
-            for i in range(min(len(rgroups), SequenceConstants.max_rgroups)):
+            for i in range(min(len(rgroups), MAX_RGROUPS)):
                 if rgroups[i] is not None:
                     self._replace_rgroup(
                         self._mol, current_offset, rgroup_idx[i], rgroups[i]

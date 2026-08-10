@@ -1,5 +1,5 @@
 import polars as pl
-from helmkit import SequenceConstants
+from helmkit import MAX_RGROUPS
 from helmkit.molecule import infer_attachment_points
 from rdkit import Chem
 
@@ -37,16 +37,16 @@ def main():
             r_group_idx = [idx for _, idx in sorted_r]
             mol = Chem.RenumberAtoms(mol, main_atoms + r_group_idx)
 
-            rgroup_idx_full = [None] * SequenceConstants.max_rgroups
+            rgroup_idx_full = [None] * MAX_RGROUPS
             for i, (r_num, _) in enumerate(sorted_r):
-                if 1 <= r_num <= SequenceConstants.max_rgroups:
+                if 1 <= r_num <= MAX_RGROUPS:
                     rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
             attachment_points = infer_attachment_points(mol, rgroup_idx_full)
 
             rgroup_vals = [
                 None if row.get(f"R{i + 1}") == "-" else row.get(f"R{i + 1}")
-                for i in range(SequenceConstants.max_rgroups)
+                for i in range(MAX_RGROUPS)
             ]
 
             if row["Compound_Name"]:
