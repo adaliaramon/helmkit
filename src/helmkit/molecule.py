@@ -335,7 +335,7 @@ class Molecule:
 
     def _extract_chain_id(self, chain_str: str) -> tuple[str, str]:
         """Extract chain ID and return (chain_id, polymer_type)."""
-        match = re.match(r"([A-Z]+)(\d+)", chain_str)
+        match = re.fullmatch(r"([A-Z]+)(\d+)", chain_str)
         if not match:
             raise ValueError(f"Invalid chain format: {chain_str}")
 
