@@ -661,7 +661,7 @@ class Molecule:
         rgroup_idx = monomer["m_RgroupIdx"]
         for i in range(min(len(rgroups), MAX_RGROUPS)):
             if rgroups[i] is not None:
-                self._replace_rgroup(self._mol, 0, rgroup_idx[i], rgroups[i])
+                self._replace_rgroup(0, rgroup_idx[i], rgroups[i])
 
         current_offset = self._mol.GetNumAtoms()
         self.offset = [0, current_offset]
@@ -673,9 +673,7 @@ class Molecule:
             rgroup_idx = monomer["m_RgroupIdx"]
             for i in range(min(len(rgroups), MAX_RGROUPS)):
                 if rgroups[i] is not None:
-                    self._replace_rgroup(
-                        self._mol, current_offset, rgroup_idx[i], rgroups[i]
-                    )
+                    self._replace_rgroup(current_offset, rgroup_idx[i], rgroups[i])
 
             atom_count = monomer["m_romol"].GetNumAtoms()
             current_offset += atom_count
@@ -694,10 +692,9 @@ class Molecule:
                 absolute_atom1_idx, absolute_atom2_idx, Chem.BondType.SINGLE
             )
 
-    def _replace_rgroup(
-        self, rdkit_mol: Chem.RWMol, atom_offset: int, atom_idx: int, atom_type: str
-    ) -> None:
+    def _replace_rgroup(self, atom_offset: int, atom_idx: int, atom_type: str) -> None:
         """Replace an R-group with the appropriate atom type."""
+        rdkit_mol = self.mol
         absolute_idx = atom_offset + atom_idx
 
         if atom_type == "OH":
