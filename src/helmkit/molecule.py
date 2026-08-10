@@ -332,7 +332,8 @@ class Molecule:
 
         return result
 
-    def _extract_chain_id(self, chain_str: str) -> tuple[str, str]:
+    @staticmethod
+    def _extract_chain_id(chain_str: str) -> tuple[str, str]:
         """Extract chain ID and return (chain_id, polymer_type)."""
         match = re.fullmatch(r"([A-Z]+)(\d+)", chain_str)
         if not match:
@@ -353,7 +354,7 @@ class Molecule:
             if monomer_name.startswith("[") and monomer_name.endswith("]")
             else monomer_name
         )
-        if monomer_name == "":
+        if not monomer_name:
             raise ValueError(f"Monomer {residue_idx + 1} has no name. Check HELM.")
 
         # Check for (a,[b]) pattern
@@ -551,8 +552,9 @@ class Molecule:
                 self.residue_reps[chain_id].append(monomer_idx)
                 monomer_idx += 1
 
+    @staticmethod
     def _parse_connection(
-        self, connection_str: str
+        connection_str: str,
     ) -> tuple[str, int, int, str, int, int] | None:
         """Parse a single connection string."""
         parts = connection_str.split(",")
