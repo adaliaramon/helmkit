@@ -7,6 +7,7 @@ from collections.abc import Callable
 from collections.abc import Sequence
 from functools import lru_cache
 from importlib.resources import files
+from typing import Literal
 from typing import overload
 from typing import TypedDict
 from typing import TypeVar
@@ -21,9 +22,7 @@ MAX_RGROUPS = 4
 def get_molecule_property(
     molecule: Chem.Mol, property_name: str, default: str | None = None
 ) -> str | None:
-    return (
-        molecule.GetProp(property_name) if molecule.HasProp(property_name) else default
-    )
+    return molecule.GetProp(property_name, default=default)
 
 
 T = TypeVar("T")
@@ -68,14 +67,14 @@ def infer_attachment_points(
             continue
 
         atom = molecule.GetAtomWithIdx(r_idx)
+        bonds: tuple[Chem.Bond, ...] = atom.GetBonds()
 
-        for bond in atom.GetBonds():
+        for bond in bonds:
             other_idx = bond.GetOtherAtomIdx(r_idx)
             attachment_points.append(other_idx)
             break
         else:
-            attachment_points.append(None)
-            warnings.warn(
+            raise ValueError(
                 f"R-group atom {r_idx} has no bonds to determine attachment point"
             )
 
@@ -294,10 +293,10 @@ class Molecule:
     def _split_helm_sections(
         self, helm: str
     ) -> tuple[list[str], list[str], list[str], str, str]:
-        parts = self._dollar_outside_brackets.split(helm, 4)
+        parts: list[str] = self._dollar_outside_brackets.split(helm, 4)
         parts.extend([""] * (5 - len(parts)))
 
-        polymers = (
+        polymers: list[str] = (
             self._pipe_outside_brackets.split(parts[0])
             if "|" in parts[0]
             else [parts[0]]
@@ -333,17 +332,17 @@ class Molecule:
         return result
 
     @staticmethod
-    def _extract_chain_id(chain_str: str) -> tuple[str, str]:
+    def _extract_polymer_type(chain_str: str) -> Literal["PEPTIDE", "RNA", "CHEM"]:
         """Extract chain ID and return (chain_id, polymer_type)."""
         match = re.fullmatch(r"([A-Z]+)(\d+)", chain_str)
         if not match:
             raise ValueError(f"Invalid chain format: {chain_str}")
 
-        polymer_type = match.group(1)
+        polymer_type: str = match.group(1)
         if polymer_type not in {"PEPTIDE", "RNA", "CHEM"}:
             raise ValueError(f"Unsupported polymer type: {polymer_type}")
 
-        return chain_str, polymer_type
+        return polymer_type
 
     def _process_monomer(
         self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
@@ -427,8 +426,8 @@ class Molecule:
                 warnings.warn(f"No sequence in polymer: {chain}")
                 continue
 
-            id_chain = chain[: match.start()]
-            chain_id, polymer_type = self._extract_chain_id(id_chain)
+            chain_id = chain[: match.start()]
+            polymer_type = self._extract_polymer_type(chain_id)
 
             if chain_id in self.chain_offset:
                 raise ValueError(f"Duplicate chain ID: {chain_id}")

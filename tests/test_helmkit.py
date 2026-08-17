@@ -5,7 +5,7 @@ def test_extract_chain_id_rejects_trailing_characters():
     molecule = Molecule.__new__(Molecule)
 
     try:
-        molecule._extract_chain_id("PEPTIDE1foo")
+        molecule._extract_polymer_type("PEPTIDE1foo")
     except ValueError:
         pass
     else:
