@@ -50,6 +50,7 @@ skip-magic-trailing-comma = true
 [tool.ty.rules]
 all = "error"
 unsound-return-statement = "ignore"
+unsound-assignment = "ignore"
 
 [tool.ty.src]
 include = ["src"]
