@@ -4,9 +4,12 @@ import re
 import warnings
 from collections import defaultdict
 from collections.abc import Callable
+from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
 from importlib.resources import files
+from typing import assert_never
+from typing import cast
 from typing import Literal
 from typing import overload
 from typing import TypedDict
@@ -101,7 +104,7 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
     monomers_dict: MonomerLibrary = defaultdict(dict)
     supplier = Chem.SDMolSupplier(library_path, removeHs=False)
 
-    for mol in supplier:
+    for mol in cast(Iterable[Chem.Mol | None], supplier):
         if mol is None:
             continue
 
@@ -445,8 +448,6 @@ class Molecule:
                     monomer = self._process_monomer(
                         monomer_name, chain_id, residue_idx, polymer_type
                     )
-                    if not monomer:
-                        continue
 
                     self.monomers.append(monomer)
                     self.residue_reps[chain_id].append(monomer_idx)
@@ -550,6 +551,8 @@ class Molecule:
                 self.monomers.append(monomer)
                 self.residue_reps[chain_id].append(monomer_idx)
                 monomer_idx += 1
+            else:
+                assert_never(polymer_type)
 
     @staticmethod
     def _parse_connection(
