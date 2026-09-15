@@ -110,6 +110,7 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
 
         symbol = get_molecule_property(mol, "symbol")
         if not symbol:
+            warnings.warn("Monomer without a symbol property will be skipped")
             continue
 
         m_type = get_molecule_property(mol, "m_type", "")
@@ -123,9 +124,9 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
         rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
         attachment_point_idx = infer_attachment_points(mol, rgroup_idx)
 
-        abbr = get_molecule_property(mol, "m_abbr", "")
-        if not abbr:
-            continue
+        # m_abbr is only used for display, so fall back to the symbol when a
+        # library does not provide it instead of dropping the monomer.
+        abbr = get_molecule_property(mol, "m_abbr") or symbol
 
         monomers_dict[m_type][symbol] = {
             "m_romol": mol,
