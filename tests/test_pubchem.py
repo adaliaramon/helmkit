@@ -34,22 +34,6 @@ def test():
     df = pl.read_ndjson(data_dir / "pubchem.ndjson")
     monomer_db = load_monomer_library()
 
-    monomer_db["aa"]["Glp"] = _create_missing_monomer(
-        "O=C1N[C@@H](CC1)C(=O)* |$;;;;;;;;_R2$|"
-    )
-    ggu = _create_missing_monomer("*N[C@@H](CCC(=O)*)C(=O)* |$_R1;;;;;;;_R2;;;_R3$|")
-    ggu["m_Rgroups"][2] = "OH"
-    monomer_db["aa"]["Ggu"] = ggu
-    monomer_db["aa"]["Tml"] = _create_missing_monomer(
-        "*N[C@@H](CCCC[N+](C)(C)C)C(=O)* |$_R1;;;;;;;;;;;;;_R2$|"
-    )
-    monomer_db["aa"]["Dpr"] = _create_missing_monomer(
-        "*N[C@@H](CN*)C(=O)* |$_R1;;;;;_R3;;;_R2$|"
-    )
-    monomer_db["aa"]["Har"] = _create_missing_monomer(
-        "C(CCN=C(N)N)C[C@@H](C(=O)*)N* |$;;;;;;;;;;;_R2;;_R1$|"
-    )
-
     # Monomers with incorrect formula (extra OH which should be an R-group)
     monomer_db["aa"][
         "*C(=O)(CC[C@@H](C(=O)O)NC(=O)CCCCCCCCCCCCCCC)O |$_R3;;;;;;;;;;;;;;;;;;;;;;;;;;;$|"

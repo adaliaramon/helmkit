@@ -17,7 +17,7 @@ DATA = Path(__file__).parent / "data" / "rna.ndjson.gz"
 # Where the corpus stood when this test was written. A fall in matches, or a
 # rise in mismatches, means something that used to be built correctly is not
 # any more.
-EXPECTED_MATCHES = 3514
+EXPECTED_MATCHES = 3520
 ALLOWED_MISMATCHES = 271
 
 
@@ -57,9 +57,8 @@ def test_nucleic_acids_from_pubchem():
     """Build every HELM string PubChem records a nucleic acid for.
 
     Each one either matches a reference structure or falls into a category
-    that says why the reference cannot settle it. A HELM string that fails to
-    build for any reason other than a monomer the library does not carry, or
-    that raises anything other than ValueError, fails the test outright. The remaining mismatches are
+    that says why the reference cannot settle it. Every HELM string in the
+    corpus builds; one that stops building fails the test outright. The remaining mismatches are
     HELM strings PubChem also maps to a stereoisomer the string itself does not
     determine; a large share of them are the 2'-fluoro sugar FR, where the
     monomer library and PubChem disagree about which face the fluorine is on.
@@ -73,10 +72,8 @@ def test_nucleic_acids_from_pubchem():
         try:
             with rdBase.BlockLogs():
                 built = Chem.MolToInchi(Molecule(helm).mol)
-        except ValueError as error:
-            assert "monomer library" in str(error), f"{helm}: {error}"
-            counts["monomer not in the library"] += 1
-            continue
+        except ValueError as error:  # pragma: no cover - nothing reaches this
+            raise AssertionError(f"{helm} failed to build: {error}") from error
 
         if any(
             without_protonation(built) == without_protonation(r) for r in references
