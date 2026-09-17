@@ -89,6 +89,49 @@ def infer_attachment_points(
     return attachment_points
 
 
+def validate_rgroups(
+    symbol: str,
+    molecule: Chem.Mol,
+    rgroups: Sequence[str | None],
+    rgroup_idx: Sequence[int | None],
+) -> None:
+    """Check that a monomer's R-group properties describe its structure.
+
+    Without this the indices are used directly to look atoms up and to pair
+    caps with atoms, so a library that disagrees with its own molecules either
+    fails deep inside RDKit or builds a molecule that is quietly not the
+    monomer the library meant to describe.
+    """
+    if len(rgroups) != len(rgroup_idx):
+        raise ValueError(
+            f"Monomer {symbol} lists {len(rgroups)} R-group cap groups but {len(rgroup_idx)} R-group atom indices."
+        )
+
+    num_atoms = molecule.GetNumAtoms()
+    seen: dict[int, int] = {}
+
+    for rgroup, (cap, idx) in enumerate(zip(rgroups, rgroup_idx), start=1):
+        if idx is None:
+            if cap is not None:
+                raise ValueError(
+                    f"R-group {rgroup} of monomer {symbol} has the cap group {cap} but no atom index."
+                )
+            continue
+        if not 0 <= idx < num_atoms:
+            raise ValueError(
+                f"R-group {rgroup} of monomer {symbol} is atom {idx}, which is outside the {num_atoms} atoms of the monomer."
+            )
+        if molecule.GetAtomWithIdx(idx).GetAtomicNum() != 0:
+            raise ValueError(
+                f"R-group {rgroup} of monomer {symbol} is atom {idx}, which is not a dummy atom."
+            )
+        if idx in seen:
+            raise ValueError(
+                f"R-group {rgroup} of monomer {symbol} is atom {idx}, which is already R-group {seen[idx]}."
+            )
+        seen[idx] = rgroup
+
+
 class MonomerData(TypedDict):
     m_romol: Chem.Mol
     m_Rgroups: list[str | None]
@@ -126,7 +169,13 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
             continue
 
         rgroups = parse_comma_separated_property(mol, "m_Rgroups")
-        rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
+        try:
+            rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
+        except ValueError as e:
+            raise ValueError(
+                f"Monomer {symbol} has an m_RgroupIdx that is not a whole number: {e}"
+            ) from None
+        validate_rgroups(symbol, mol, rgroups, rgroup_idx)
         attachment_point_idx = infer_attachment_points(mol, rgroup_idx, symbol)
 
         # m_abbr is only used for display, so fall back to the symbol when a
@@ -202,12 +251,22 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         if label.startswith("_R"):
             try:
                 r_num = int(label[2:])
-                atom.SetProp("dummyLabel", f"R{r_num}")
-                atom.SetIntProp("_MolFileRLabel", r_num)
-                atom.SetProp("molFileValue", "*")
-                r_group_map[r_num] = idx
             except ValueError:
-                continue
+                raise ValueError(
+                    f"Monomer {monomer_name} labels an atom {label}, which is not of the form _R<number>."
+                ) from None
+            if not 1 <= r_num <= MAX_RGROUPS:
+                raise ValueError(
+                    f"Monomer {monomer_name} labels an atom {label}; R-groups run from R1 to R{MAX_RGROUPS}."
+                )
+            if r_num in r_group_map:
+                raise ValueError(
+                    f"Monomer {monomer_name} labels more than one atom {label}."
+                )
+            atom.SetProp("dummyLabel", f"R{r_num}")
+            atom.SetIntProp("_MolFileRLabel", r_num)
+            atom.SetProp("molFileValue", "*")
+            r_group_map[r_num] = idx
         else:
             main_atoms.append(idx)
 
@@ -217,8 +276,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
 
     rgroup_idx_full: list[int | None] = [None] * MAX_RGROUPS
     for i, (r_num, _) in enumerate(sorted_r):
-        if 1 <= r_num <= MAX_RGROUPS:
-            rgroup_idx_full[r_num - 1] = len(main_atoms) + i
+        rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
     attachment_points = infer_attachment_points(mol, rgroup_idx_full, monomer_name)
     rgroup_vals: list[str | None] = [None] * MAX_RGROUPS
@@ -440,6 +498,26 @@ class Molecule:
         return result
 
     @staticmethod
+    def _attachment_point(
+        monomer: MonomerData, rgroup: int, position: int, context: str
+    ) -> int:
+        """Look up the atom a monomer's R-group bonds through.
+
+        The R-group number is checked against the monomer rather than used as a
+        list index: a monomer that declares fewer R-groups than the bond needs
+        would otherwise come back as a bare IndexError.
+        """
+        attachment_points = monomer["m_attachmentPointIdx"]
+        attachment = (
+            attachment_points[rgroup] if 0 <= rgroup < len(attachment_points) else None
+        )
+        if attachment is None:
+            raise ValueError(
+                f"R-group {rgroup + 1} is not present in monomer {position} ({monomer['m_abbr']}). Check {context}."
+            )
+        return attachment
+
+    @staticmethod
     def _extract_polymer_type(chain_str: str) -> Literal["PEPTIDE", "RNA", "CHEM"]:
         """Extract chain ID and return (chain_id, polymer_type)."""
         match = re.fullmatch(r"([A-Z]+)(\d+)", chain_str)
@@ -574,16 +652,12 @@ class Molecule:
                         monomer1 = self.monomers[monomer_idx - 1]
                         monomer2 = monomer
 
-                        attachment_point1 = monomer1["m_attachmentPointIdx"][1]
-                        if attachment_point1 is None:
-                            raise ValueError(
-                                f"R-group 2 is not present in monomer {monomer_idx} ({monomer1['m_abbr']}). Check monomers."
-                            )
-                        attachment_point2 = monomer2["m_attachmentPointIdx"][0]
-                        if attachment_point2 is None:
-                            raise ValueError(
-                                f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_abbr']}). Check monomers."
-                            )
+                        attachment_point1 = self._attachment_point(
+                            monomer1, 1, monomer_idx, "monomers"
+                        )
+                        attachment_point2 = self._attachment_point(
+                            monomer2, 0, monomer_idx + 1, "monomers"
+                        )
 
                         self.bondlist.append([
                             monomer_idx - 1,
@@ -622,21 +696,12 @@ class Molecule:
 
                             # Attach to R3 to R1 if the monomer is a base, R2 to R1 otherwise
                             r_index = 2 if is_base else 1
-                            try:
-                                attachment_point1 = monomer1["m_attachmentPointIdx"][
-                                    r_index
-                                ]
-                            except IndexError:
-                                attachment_point1 = None
-                            if attachment_point1 is None:
-                                raise ValueError(
-                                    f"R-group {r_index + 1} is not present in monomer {prev_monomer + 1} ({monomer1['m_abbr']}). Check monomers."
-                                )
-                            attachment_point2 = monomer2["m_attachmentPointIdx"][0]
-                            if attachment_point2 is None:
-                                raise ValueError(
-                                    f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_abbr']}). Check monomers."
-                                )
+                            attachment_point1 = self._attachment_point(
+                                monomer1, r_index, prev_monomer + 1, "monomers"
+                            )
+                            attachment_point2 = self._attachment_point(
+                                monomer2, 0, monomer_idx + 1, "monomers"
+                            )
 
                             self.bondlist.append([
                                 prev_monomer,
@@ -749,15 +814,9 @@ class Molecule:
         otherwise be read as a negative index and silently bond the wrong atoms.
         """
         monomer_idx = self._resolve_residue(chain_id, residue, "connections")
-        monomer = self.monomers[monomer_idx]
-        attachment_points = monomer["m_attachmentPointIdx"]
-        attachment_idx = (
-            attachment_points[rgroup] if 0 <= rgroup < len(attachment_points) else None
+        attachment_idx = self._attachment_point(
+            self.monomers[monomer_idx], rgroup, monomer_idx + 1, "connections"
         )
-        if attachment_idx is None:
-            raise ValueError(
-                f"R-group {rgroup + 1} is not present in monomer {monomer_idx + 1} ({monomer['m_abbr']}). Check connections."
-            )
 
         return monomer_idx, attachment_idx
 
@@ -827,11 +886,7 @@ class Molecule:
         monomer = self.monomers[0]
         self._mol = Chem.RWMol(monomer["m_romol"])
 
-        rgroups = monomer["m_Rgroups"]
-        rgroup_idx = monomer["m_RgroupIdx"]
-        for i in range(min(len(rgroups), MAX_RGROUPS)):
-            if rgroups[i] is not None:
-                self._replace_rgroup(0, rgroup_idx[i], rgroups[i])
+        self._replace_rgroups(0, monomer)
 
         current_offset = self._mol.GetNumAtoms()
         self.offset = [0, current_offset]
@@ -839,11 +894,7 @@ class Molecule:
         for monomer in self.monomers[1:]:
             self._mol.InsertMol(monomer["m_romol"])
 
-            rgroups = monomer["m_Rgroups"]
-            rgroup_idx = monomer["m_RgroupIdx"]
-            for i in range(min(len(rgroups), MAX_RGROUPS)):
-                if rgroups[i] is not None:
-                    self._replace_rgroup(current_offset, rgroup_idx[i], rgroups[i])
+            self._replace_rgroups(current_offset, monomer)
 
             atom_count = monomer["m_romol"].GetNumAtoms()
             current_offset += atom_count
@@ -875,6 +926,19 @@ class Molecule:
             self.mol.AddBond(
                 absolute_atom1_idx, absolute_atom2_idx, Chem.BondType.SINGLE
             )
+
+    def _replace_rgroups(self, atom_offset: int, monomer: MonomerData) -> None:
+        """Cap every R-group of a monomer that no bond has claimed."""
+        for rgroup, (cap, atom_idx) in enumerate(
+            zip(monomer["m_Rgroups"], monomer["m_RgroupIdx"]), start=1
+        ):
+            if cap is None:
+                continue
+            if atom_idx is None:
+                raise ValueError(
+                    f"R-group {rgroup} of monomer {monomer['m_abbr']} has the cap group {cap} but no atom index."
+                )
+            self._replace_rgroup(atom_offset, atom_idx, cap)
 
     def _replace_rgroup(self, atom_offset: int, atom_idx: int, atom_type: str) -> None:
         """Replace an unused R-group with the heavy atom of its cap group."""
