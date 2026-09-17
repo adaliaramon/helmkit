@@ -68,3 +68,33 @@ def test_hydroxyl_caps_still_close_the_peptide_terminus():
     assert Chem.MolToSmiles(molecule.mol) == canonical(
         "C[C@H](N)C(=O)N[C@@H](CCCNC(=N)N)C(=O)NCC(=O)O"
     )
+
+
+def test_an_inline_amino_acid_agrees_with_the_same_monomer_from_the_library():
+    """An unused R2 is the carboxyl terminus, so it caps with OH, not hydrogen.
+
+    Without the cap the dummy was simply deleted and the carboxyl carbon kept
+    only its double bonded oxygen, turning the residue into an aldehyde.
+    """
+    alanine = "[*N[C@@H](C)C(=O)* |$_R1;;;;;;_R2$|]"
+
+    from_library = Molecule("PEPTIDE1{A}$$$$")
+    from_smiles = Molecule(f"PEPTIDE1{{{alanine}}}$$$$")
+
+    assert Chem.MolToSmiles(from_smiles.mol) == Chem.MolToSmiles(from_library.mol)
+    assert Chem.MolToSmiles(from_smiles.mol) == canonical("C[C@H](N)C(=O)O")
+
+
+def test_an_inline_amino_acid_at_the_end_of_a_chain_keeps_its_acid():
+    alanine = "[*N[C@@H](C)C(=O)* |$_R1;;;;;;_R2$|]"
+
+    molecule = Molecule(f"PEPTIDE1{{A.{alanine}}}$$$$")
+
+    assert Chem.MolToSmiles(molecule.mol) == canonical("C[C@H](N)C(=O)N[C@@H](C)C(=O)O")
+
+
+def test_a_monomer_written_as_a_free_acid_does_not_gain_a_second_hydroxyl():
+    """R2 inferred onto an existing carboxyl must not also be capped with OH."""
+    molecule = Molecule("PEPTIDE1{A.[NCC(=O)O]}$$$$")
+
+    assert Chem.MolToSmiles(molecule.mol) == canonical("C[C@H](N)C(=O)NCC(=O)O")

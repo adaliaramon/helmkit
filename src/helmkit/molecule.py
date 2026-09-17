@@ -59,12 +59,12 @@ def parse_comma_separated_property(
 
 
 def infer_attachment_points(
-    molecule: Chem.Mol, rgroup_indices: Sequence[int | None]
+    molecule: Chem.Mol, rgroup_indices: Sequence[int | None], name: str = "monomer"
 ) -> list[int | None]:
     """Infer attachment points by finding atoms bonded to R-group atoms."""
-    attachment_points = []
+    attachment_points: list[int | None] = []
 
-    for r_idx in rgroup_indices:
+    for rgroup, r_idx in enumerate(rgroup_indices, start=1):
         if r_idx is None:
             attachment_points.append(None)
             continue
@@ -72,13 +72,18 @@ def infer_attachment_points(
         atom = molecule.GetAtomWithIdx(r_idx)
         bonds: tuple[Chem.Bond, ...] = atom.GetBonds()
 
+        # The attachment point has to be a real atom. Dummy atoms are all
+        # deleted while sanitizing, so an R-group bonded only to other dummies
+        # would leave the bonds made to it pointing at atoms that are gone and
+        # drop the monomer out of the molecule without a word.
         for bond in bonds:
             other_idx = bond.GetOtherAtomIdx(r_idx)
-            attachment_points.append(other_idx)
-            break
+            if molecule.GetAtomWithIdx(other_idx).GetAtomicNum() != 0:
+                attachment_points.append(other_idx)
+                break
         else:
             raise ValueError(
-                f"R-group atom {r_idx} has no bonds to determine attachment point"
+                f"R-group {rgroup} of {name} (atom {r_idx}) is not bonded to a non-dummy atom, so it has no attachment point."
             )
 
     return attachment_points
@@ -122,7 +127,7 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
 
         rgroups = parse_comma_separated_property(mol, "m_Rgroups")
         rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
-        attachment_point_idx = infer_attachment_points(mol, rgroup_idx)
+        attachment_point_idx = infer_attachment_points(mol, rgroup_idx, symbol)
 
         # m_abbr is only used for display, so fall back to the symbol when a
         # library does not provide it instead of dropping the monomer.
@@ -143,6 +148,24 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
 # Bounded: the cache key is an arbitrary monomer name, so an unbounded cache
 # would keep an entry for every distinct inline SMILES string ever parsed.
 @lru_cache(maxsize=4096)
+def _is_free_carbonyl_carbon(molecule: Chem.Mol, idx: int) -> bool:
+    """Is this a carbonyl carbon that does not already carry a second oxygen?"""
+    atom = molecule.GetAtomWithIdx(idx)
+    if atom.GetAtomicNum() != 6:
+        return False
+
+    carbonyl = False
+    for bond in atom.GetBonds():
+        other = bond.GetOtherAtom(atom)
+        if other.GetAtomicNum() != 8:
+            continue
+        if bond.GetBondType() == Chem.BondType.DOUBLE:
+            carbonyl = True
+        else:
+            return False
+    return carbonyl
+
+
 def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
     mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
@@ -197,7 +220,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         if 1 <= r_num <= MAX_RGROUPS:
             rgroup_idx_full[r_num - 1] = len(main_atoms) + i
 
-    attachment_points = infer_attachment_points(mol, rgroup_idx_full)
+    attachment_points = infer_attachment_points(mol, rgroup_idx_full, monomer_name)
     rgroup_vals: list[str | None] = [None] * MAX_RGROUPS
 
     if m_type == "aa" and "_R1" not in monomer_name:
@@ -234,6 +257,17 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
             mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
             rgroup_idx_full[1] = new_idx
             attachment_points[1] = attachment_id
+
+    # An amino acid caps an unused R2 with OH, the way every amino acid in the
+    # monomer library does. Without it the carboxyl carbon keeps only its double
+    # bonded oxygen once the dummy is deleted and the residue becomes an
+    # aldehyde, so the same monomer spelled as SMILES and looked up by symbol
+    # would not agree. Only an explicitly labelled R2 is capped: an R2 inferred
+    # above sits on a carboxyl group that still carries its hydroxyl.
+    if m_type == "aa" and "_R2" in monomer_name:
+        r2_attachment = attachment_points[1]
+        if r2_attachment is not None and _is_free_carbonyl_carbon(mol, r2_attachment):
+            rgroup_vals[1] = "OH"
 
     mol.SetProp("symbol", monomer_name)
     mol.SetProp("m_abbr", monomer_name)
@@ -279,8 +313,6 @@ class Molecule:
     """Single class for HELM to RDKit Mol conversion."""
 
     _bracket_re = re.compile(r"{(.*?)}")
-    _pipe_outside_brackets = re.compile(r"\|(?![^\[]*\])")
-    _dollar_outside_brackets = re.compile(r"\$(?![^\[]*\])")
     _annotation_re = re.compile(r'"[^"]*"')
     _rgroup_re = re.compile(r"R(\d+)")
 
@@ -324,17 +356,51 @@ class Molecule:
         self._process_connections(connection_sections)
         self._process_hydrogen_bonds(hydrogen_bonds_sections)
 
+    @staticmethod
+    def _split_outside_brackets(
+        text: str, separator: str, maxsplit: int = 0
+    ) -> list[str]:
+        """Split on a separator that is not inside a bracketed monomer name.
+
+        An inline SMILES monomer is written in square brackets and its CXSMILES
+        part contains both separators, so the split tracks bracket depth rather
+        than looking ahead for a closing bracket: a lookahead cannot tell a
+        separator inside a monomer from one followed by a later section that
+        happens to contain a bracket.
+        """
+        parts: list[str] = []
+        current: list[str] = []
+        depth = 0
+
+        for char in text:
+            if char == "[":
+                depth += 1
+            elif char == "]":
+                depth = max(depth - 1, 0)
+
+            if (
+                char == separator
+                and depth == 0
+                and (not maxsplit or len(parts) < maxsplit)
+            ):
+                parts.append("".join(current))
+                current = []
+            else:
+                current.append(char)
+
+        if depth:
+            raise ValueError(f"Unbalanced brackets in {text}. Check HELM.")
+
+        parts.append("".join(current))
+        return parts
+
     def _split_helm_sections(
         self, helm: str
     ) -> tuple[list[str], list[str], list[str], str, str]:
-        parts: list[str] = self._dollar_outside_brackets.split(helm, 4)
+        parts: list[str] = self._split_outside_brackets(helm, "$", 4)
         parts.extend([""] * (5 - len(parts)))
 
-        polymers: list[str] = (
-            self._pipe_outside_brackets.split(parts[0])
-            if "|" in parts[0]
-            else [parts[0]]
-        )
+        polymers: list[str] = self._split_outside_brackets(parts[0], "|")
         connections = parts[1].split("|") if parts[1] else []
         hydrogen_bonds = parts[2].split("|") if parts[2] else []
 
@@ -856,13 +922,18 @@ class Molecule:
 
     @property
     def bond_indices(self) -> list[int]:
-        return [
-            self.mol.GetBondBetweenAtoms(
+        indices = []
+        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist:
+            bond = self.mol.GetBondBetweenAtoms(
                 self.offset[monomer1_idx] + atom1_idx,
                 self.offset[monomer2_idx] + atom2_idx,
-            ).GetIdx()
-            for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist
-        ]
+            )
+            if bond is None:
+                raise ValueError(
+                    f"The bond between monomer {monomer1_idx + 1} and monomer {monomer2_idx + 1} is not present in the molecule."
+                )
+            indices.append(bond.GetIdx())
+        return indices
 
     @property
     def monomer_indices(self) -> list[int]:

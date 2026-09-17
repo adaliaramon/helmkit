@@ -175,3 +175,50 @@ def test_ambiguous_monomers_are_still_resolved():
     assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles(
         "C[C@H](N)C(=O)N[C@H](CO)C(=O)NCC(=O)O"
     )
+
+
+@pytest.mark.parametrize(
+    "monomer", ["[** |$_R1;_R2$|]", "[*** |$_R1;;_R2$|]", "[* |$_R1$|]"]
+)
+def test_an_rgroup_bonded_only_to_dummies_is_rejected(monomer):
+    """Its attachment point would be deleted along with the other dummy atoms.
+
+    The monomer then contributed no atoms at all and dropped out of the
+    molecule, while the bonds recorded for it pointed at atoms that were gone.
+    """
+    with pytest.raises(ValueError, match="no attachment point"):
+        Molecule(f"PEPTIDE1{{A.{monomer}.G}}$$$$")
+
+
+def test_a_monomer_never_vanishes_from_the_molecule():
+    """Every monomer has to contribute at least one atom to the result."""
+    molecule = Molecule("PEPTIDE1{A.C.G.C}$PEPTIDE1,PEPTIDE1,2:R3-4:R3$$$")
+
+    assert molecule.offset[-1] == molecule.mol.GetNumAtoms()
+    for i in range(len(molecule.monomers)):
+        assert molecule.offset[i] < molecule.offset[i + 1]
+    # every recorded bond is really in the molecule
+    assert len(molecule.bond_indices) == len(molecule.bondlist)
+
+
+@pytest.mark.parametrize("tail", ["", "V2.0", "]", "V2.0]", "a]b", '{"a":[1]}'])
+def test_a_later_section_containing_a_bracket_does_not_break_the_split(tail):
+    """A closing bracket in a trailing section used to suppress the $ split."""
+    bridged = "PEPTIDE1{A.C.G.C}$PEPTIDE1,PEPTIDE1,2:R3-4:R3$$"
+
+    molecule = Molecule(f"{bridged}${tail}")
+
+    assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles(
+        "C[C@H](N)C(=O)N[C@H]1CSSC[C@@H](C(=O)O)NC(=O)CNC1=O"
+    )
+
+
+def test_separators_inside_an_inline_monomer_are_not_section_separators():
+    """CXSMILES carries both `$` and `|` inside the brackets of a monomer."""
+    molecule = Molecule(
+        "CHEM1{[*OCCO* |$_R1;;;;_R2$|]}|PEPTIDE1{A.C}$PEPTIDE1,CHEM1,2:R3-1:R1$$$"
+    )
+
+    assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles(
+        "C[C@H](N)C(=O)N[C@@H](CSOCCO)C(=O)O"
+    )
