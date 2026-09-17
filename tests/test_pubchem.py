@@ -9,10 +9,23 @@ from rdkit import Chem
 from tqdm import tqdm
 
 
-def clean_inchi(inchi: str) -> str:
-    # Remove /b... (double bond stereo) layer
-    inchi = re.sub(r"/b[^/]+", "", inchi)
-    # Remove /p... (charge) layer
+def states_double_bond_geometry(helm: str) -> bool:
+    r"""Does the HELM string say which way round a double bond goes?
+
+    Only an inline SMILES monomer can, and only with a / or a \.
+    """
+    return bool(re.search(r"[/\\]", helm))
+
+
+def clean_inchi(inchi: str, compare_double_bond_stereo: bool = False) -> str:
+    # Remove /b... (double bond stereo) layer, unless the HELM string says what
+    # the geometry is, in which case helmkit is expected to reproduce it.
+    if not compare_double_bond_stereo:
+        inchi = re.sub(r"/b[^/]+", "", inchi)
+    # Remove /p... (charge) layer. It records the protonation state of the
+    # structure PubChem happens to hold, which a HELM string does not describe:
+    # the references that differ here are recorded as salts of up to +8 while
+    # the HELM describes the neutral molecule.
     return re.sub(r"/p[+-]?\d*", "", inchi)
 
 
@@ -73,8 +86,9 @@ def test():
             # Ignore stereo
             inchi1 = inchi1.split("/")[0]
             inchi2 = inchi2.split("/")[0]
-        inchi1 = clean_inchi(inchi1)
-        inchi2 = clean_inchi(inchi2)
+        compare_stereo = states_double_bond_geometry(helm)
+        inchi1 = clean_inchi(inchi1, compare_stereo)
+        inchi2 = clean_inchi(inchi2, compare_stereo)
         if inchi1 != inchi2:
             errors.append(row)
             reasons.append(f"{inchi1} != {inchi2}")
