@@ -81,19 +81,31 @@ def test_an_unparseable_connection_is_rejected(connection):
 
 def test_a_connection_that_repeats_the_backbone_bond_is_rejected():
     """RDKit answered this with a bare C++ pre-condition violation."""
-    with pytest.raises(ValueError, match="Duplicate bond"):
+    with pytest.raises(ValueError, match="bonded more than once"):
         Molecule("PEPTIDE1{A.G}$PEPTIDE1,PEPTIDE1,1:R2-2:R1$$$")
 
 
 def test_a_repeated_connection_is_rejected():
     bridge = "PEPTIDE1,PEPTIDE1,2:R3-4:R3"
-    with pytest.raises(ValueError, match="Duplicate bond"):
+    with pytest.raises(ValueError, match="bonded more than once"):
         Molecule(f"PEPTIDE1{{A.C.G.C}}${bridge}|{bridge}$$$")
 
 
 def test_a_monomer_bonded_to_itself_is_rejected():
-    with pytest.raises(ValueError, match="bonded to itself"):
+    with pytest.raises(ValueError, match="bonded more than once"):
         Molecule("PEPTIDE1{A.G}$PEPTIDE1,PEPTIDE1,1:R1-1:R1$$$")
+
+
+def test_two_bonds_landing_on_one_atom_are_rejected():
+    """A phosphate carries R1 and R2 on the same atom, so two different
+    R-groups can still put two bonds between the same pair of atoms."""
+    with pytest.raises(ValueError, match="Duplicate bond"):
+        Molecule("RNA1{P}|RNA2{P}$RNA1,RNA2,1:R1-1:R1|RNA1,RNA2,1:R2-1:R2$$$")
+
+
+def test_a_bond_from_an_atom_back_to_itself_is_rejected():
+    with pytest.raises(ValueError, match="bonded to itself"):
+        Molecule("RNA1{P}$RNA1,RNA1,1:R1-1:R2$$$")
 
 
 @pytest.mark.parametrize(
@@ -123,8 +135,14 @@ def test_a_branch_monomer_cannot_start_a_chain():
 
 
 def test_a_disconnected_inline_monomer_is_rejected():
-    with pytest.raises(ValueError, match="not a single connected fragment"):
+    with pytest.raises(ValueError, match="falls into separate fragments"):
         Molecule("PEPTIDE1{[CCO.CCO]}$$$$")
+
+
+def test_an_rgroup_that_bridges_two_halves_of_a_monomer_is_rejected():
+    """The two halves only come apart once the R-group is deleted."""
+    with pytest.raises(ValueError, match="falls into separate fragments"):
+        Molecule(r"CHEM1{[CC*CC |$;;_R1;;$|]}$$$$")
 
 
 def test_inline_monomers_do_not_grow_the_shared_library():
@@ -178,16 +196,23 @@ def test_ambiguous_monomers_are_still_resolved():
 
 
 @pytest.mark.parametrize(
-    "monomer", ["[** |$_R1;_R2$|]", "[*** |$_R1;;_R2$|]", "[* |$_R1$|]"]
+    "monomer", ["[** |$_R1;_R2$|]", "[*** |$_R1;;_R2$|]", "[* |$_R1$|]", "[*]"]
 )
-def test_an_rgroup_bonded_only_to_dummies_is_rejected(monomer):
+def test_a_monomer_of_nothing_but_rgroups_is_rejected(monomer):
+    """It contributed no atoms at all and dropped out of the molecule, while
+    the bonds recorded for it pointed at atoms that were no longer there."""
+    with pytest.raises(ValueError, match="no atoms besides its R-groups"):
+        Molecule(f"PEPTIDE1{{A.{monomer}.G}}$$$$")
+
+
+def test_an_rgroup_bonded_only_to_dummies_is_rejected():
     """Its attachment point would be deleted along with the other dummy atoms.
 
-    The monomer then contributed no atoms at all and dropped out of the
-    molecule, while the bonds recorded for it pointed at atoms that were gone.
+    The monomer here keeps a real atom, so it is the attachment point rather
+    than the whole monomer that would disappear.
     """
     with pytest.raises(ValueError, match="no attachment point"):
-        Molecule(f"PEPTIDE1{{A.{monomer}.G}}$$$$")
+        Molecule(r"PEPTIDE1{A.[**C |$_R1;_R2;$|].G}$$$$")
 
 
 def test_a_monomer_never_vanishes_from_the_molecule():
@@ -222,3 +247,9 @@ def test_separators_inside_an_inline_monomer_are_not_section_separators():
     assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles(
         "C[C@H](N)C(=O)N[C@@H](CSOCCO)C(=O)O"
     )
+
+
+def test_a_polymer_of_a_single_dummy_monomer_is_rejected():
+    """The one monomer was dropped and an empty molecule came back instead."""
+    with pytest.raises(ValueError, match="no atoms besides its R-groups"):
+        Molecule("PEPTIDE1{[*]}$$$$")

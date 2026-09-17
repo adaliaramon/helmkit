@@ -44,3 +44,24 @@ def test_valid_connections_are_unaffected():
         "C[C@H](N)C(=O)N[C@H]1CSSC[C@@H](C(=O)O)NC(=O)CNC1=O"
     )
     assert len(bridged.bondlist) == 4
+
+
+@pytest.mark.parametrize(
+    "helm",
+    [
+        "PEPTIDE1{A.C.A}$PEPTIDE1,PEPTIDE1,1:R2-3:R1$$$",
+        "PEPTIDE1{F.W.A.E}$PEPTIDE1,PEPTIDE1,3:R1-3:R2|PEPTIDE1,PEPTIDE1,3:R2-4:R3$$$",
+        "RNA1{[dR](C)P}$RNA1,RNA1,1:R3-1:R2$$$",
+        "RNA1{R(A)(C)}$$$$",
+    ],
+)
+def test_an_rgroup_cannot_be_bonded_twice(helm):
+    """An R-group stands for one attachment, so a second bond must be refused.
+
+    Both bonds landed on the same atom and left it with five bonds, so the
+    molecule could not be sanitized and could not be read back from its own
+    SMILES. The last case needs no connection section at all: it is two bases
+    written onto one sugar.
+    """
+    with pytest.raises(ValueError, match="bonded more than once"):
+        Molecule(helm)

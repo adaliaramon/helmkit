@@ -139,6 +139,22 @@ def validate_rgroups(
         seen[idx] = rgroup
 
 
+def validate_monomer_core(name: str, molecule: Chem.Mol) -> None:
+    """Check what the monomer is left as once its R-groups are gone.
+
+    Every dummy atom is deleted while sanitizing, so a monomer made only of
+    R-groups disappears out of the molecule, and one whose R-group sits between
+    two halves falls into two pieces. Neither says anything at the time.
+    """
+    core = Chem.DeleteSubstructs(Chem.Mol(molecule), Chem.MolFromSmarts("[#0]"))
+    if core.GetNumAtoms() == 0:
+        raise ValueError(f"Monomer {name} has no atoms besides its R-groups.")
+    if len(Chem.GetMolFrags(core)) > 1:
+        raise ValueError(
+            f"Monomer {name} falls into separate fragments once its R-groups are removed."
+        )
+
+
 class MonomerData(TypedDict):
     m_romol: Chem.Mol
     m_Rgroups: list[str | None]
@@ -183,6 +199,7 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
                 f"Monomer {symbol} has an m_RgroupIdx that is not a whole number: {e}"
             ) from None
         validate_rgroups(symbol, mol, rgroups, rgroup_idx)
+        validate_monomer_core(symbol, mol)
         attachment_point_idx = infer_attachment_points(mol, rgroup_idx, symbol)
 
         # m_abbr is only used for display, so fall back to the symbol when a
@@ -243,10 +260,7 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         raise ValueError(
             f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
         )
-    if len(Chem.GetMolFrags(mol)) > 1:
-        raise ValueError(
-            f"Monomer {monomer_name} is not a single connected fragment. Check HELM."
-        )
+    validate_monomer_core(monomer_name, mol)
 
     # Parsing without sanitizing records `/` and `\` as bond directions but never
     # works out the double bond geometry they describe, and sanitizing does not
@@ -315,16 +329,28 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
             attachment_points[0] = attachment_id
 
     if m_type == "aa" and "_R2" not in monomer_name:
-        aldehyde = Chem.MolFromSmarts("[CX3H1]=O")
-        matches = mol.GetSubstructMatches(aldehyde)
+        matches = mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3H1]=O"))
+        hydroxyl = None
         if len(matches) == 0:
-            matches = mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3](=O)[OH]"))
+            acid = mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3](=O)[OH]"))
+            if len(acid) == 1:
+                matches = acid
+                hydroxyl = acid[0][2]
         if len(matches) == 1:
             attachment_id, *_ = matches[0]
 
             mol = Chem.RWMol(mol)
-            new_idx = mol.AddAtom(Chem.Atom(0))
-            mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
+            if hydroxyl is None:
+                new_idx = mol.AddAtom(Chem.Atom(0))
+                mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
+            else:
+                # The hydroxyl is the leaving group a peptide bond replaces, so
+                # it becomes the R-group itself. Hanging a second atom off the
+                # carboxyl carbon instead would give it five bonds as soon as
+                # anything bonded through that R-group.
+                mol.ReplaceAtom(hydroxyl, Chem.Atom(0))
+                new_idx = hydroxyl
+                rgroup_vals[1] = "OH"
             rgroup_idx_full[1] = new_idx
             attachment_points[1] = attachment_id
 
@@ -395,6 +421,7 @@ class Molecule:
         self.chain_offset = {}
         self.residue_reps = defaultdict(list)
         self.has_ambiguous_monomers = False
+        self.used_rgroups: set[tuple[int, int]] = set()
         self.hydrogen_bonds = []
 
         if monomer_df is None:
@@ -885,8 +912,18 @@ class Molecule:
             self.hydrogen_bonds.append([chain_id1, residue1, chain_id2, residue2])
 
     def _mark_used_rgroup(self, monomer_idx: int, rgroup: int) -> None:
-        """Mark an R-group as used based on its attachment point index."""
+        """Claim an R-group for a bond, refusing one that is already spent.
+
+        An R-group stands for one attachment. Letting a second bond claim it
+        puts both bonds on the same atom, which overfills it and hands back a
+        molecule RDKit cannot even read back from its own SMILES.
+        """
         monomer = self.monomers[monomer_idx]
+        if (monomer_idx, rgroup) in self.used_rgroups:
+            raise ValueError(
+                f"R-group {rgroup + 1} of monomer {monomer_idx + 1} ({monomer['m_abbr']}) is bonded more than once. Check HELM."
+            )
+        self.used_rgroups.add((monomer_idx, rgroup))
         monomer["m_Rgroups"][rgroup] = None
 
     def _build_molecule(self) -> None:

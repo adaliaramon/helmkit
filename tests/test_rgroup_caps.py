@@ -98,3 +98,23 @@ def test_a_monomer_written_as_a_free_acid_does_not_gain_a_second_hydroxyl():
     molecule = Molecule("PEPTIDE1{A.[NCC(=O)O]}$$$$")
 
     assert Chem.MolToSmiles(molecule.mol) == canonical("C[C@H](N)C(=O)NCC(=O)O")
+
+
+def test_an_inferred_r2_replaces_the_hydroxyl_instead_of_joining_it():
+    """An inline amino acid written as a plain acid used to gain a fifth bond.
+
+    R2 is inferred onto the carboxyl carbon when no _R2 label is given. The
+    hydroxyl is the leaving group the peptide bond replaces, so it becomes the
+    R-group; leaving it in place overfilled the carbon as soon as the bond was
+    made.
+    """
+    molecule = Molecule("PEPTIDE1{[N[C@@H](C)C(=O)O].G}$$$$")
+
+    Chem.SanitizeMol(Chem.Mol(molecule.mol))
+    assert Chem.MolToSmiles(molecule.mol) == canonical("C[C@H](N)C(=O)NCC(=O)O")
+
+
+def test_an_unused_inferred_r2_is_still_a_free_acid():
+    molecule = Molecule("PEPTIDE1{[N[C@@H](C)C(=O)O]}$$$$")
+
+    assert Chem.MolToSmiles(molecule.mol) == canonical("C[C@H](N)C(=O)O")
