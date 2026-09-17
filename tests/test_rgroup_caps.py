@@ -40,11 +40,11 @@ def test_oxygen_cap_group_written_without_its_hydrogen(tmp_path):
     assert Chem.MolToSmiles(molecule.mol) == canonical("NCC(O)=O")
 
 
-def test_cap_group_of_more_than_one_heavy_atom_warns(tmp_path):
-    """Caps that are not a single heavy atom are still reported as unsupported."""
+def test_cap_group_of_more_than_one_heavy_atom_is_rejected(tmp_path):
+    """A cap that cannot be applied would silently cost the molecule an atom."""
     library = glycine_library(tmp_path / "ester.sdf", "H,OCC,None,None")
 
-    with pytest.warns(UserWarning, match="Unrecognized R-group type: OCC"):
+    with pytest.raises(ValueError, match="Unsupported R-group cap group OCC"):
         Molecule("PEPTIDE1{G}$$$$", library)
 
 

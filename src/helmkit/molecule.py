@@ -140,6 +140,9 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
     return monomers_dict
 
 
+# Bounded: the cache key is an arbitrary monomer name, so an unbounded cache
+# would keep an entry for every distinct inline SMILES string ever parsed.
+@lru_cache(maxsize=4096)
 def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
     mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
@@ -160,6 +163,10 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     if error:
         raise ValueError(
             f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
+        )
+    if len(Chem.GetMolFrags(mol)) > 1:
+        raise ValueError(
+            f"Monomer {monomer_name} is not a single connected fragment. Check HELM."
         )
 
     r_group_map = {}
@@ -274,6 +281,8 @@ class Molecule:
     _bracket_re = re.compile(r"{(.*?)}")
     _pipe_outside_brackets = re.compile(r"\|(?![^\[]*\])")
     _dollar_outside_brackets = re.compile(r"\$(?![^\[]*\])")
+    _annotation_re = re.compile(r'"[^"]*"')
+    _rgroup_re = re.compile(r"R(\d+)")
 
     def __init__(self, helm: str, monomer_df: MonomerLibrary | None = None):
         """Initialize a Molecule object from a HELM string."""
@@ -309,8 +318,7 @@ class Molecule:
         )
 
         if not polymer_sections:
-            warnings.warn(f"No simple polymers in HELM string {helm}")
-            return
+            raise ValueError(f"No simple polymers in HELM string {helm}")
 
         self._process_polymers(polymer_sections)
         self._process_connections(connection_sections)
@@ -345,6 +353,10 @@ class Molecule:
                 current += char
             elif char in "])":
                 bracket_depth -= 1
+                if bracket_depth < 0:
+                    raise ValueError(
+                        f"Unbalanced brackets in sequence {sequence}. Check HELM."
+                    )
                 current += char
             elif char == "." and bracket_depth == 0:
                 result.append(current)
@@ -352,8 +364,12 @@ class Molecule:
             else:
                 current += char
 
-        if current:
-            result.append(current)
+        if bracket_depth:
+            raise ValueError(f"Unbalanced brackets in sequence {sequence}. Check HELM.")
+
+        # Appended even when empty: a trailing separator leaves a nameless
+        # residue behind, which _process_monomer rejects rather than dropping.
+        result.append(current)
 
         return result
 
@@ -374,11 +390,9 @@ class Molecule:
         self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
     ) -> MonomerData:
         """Process a single monomer."""
-        monomer_name = (
-            monomer_name[1:-1]
-            if monomer_name.startswith("[") and monomer_name.endswith("]")
-            else monomer_name
-        )
+        bracketed = monomer_name.startswith("[") and monomer_name.endswith("]")
+        if bracketed:
+            monomer_name = monomer_name[1:-1]
         if not monomer_name:
             raise ValueError(f"Monomer {residue_idx + 1} has no name. Check HELM.")
 
@@ -388,7 +402,7 @@ class Molecule:
             # Extract the 'b' from (a,[b]) and recurse
             self.has_ambiguous_monomers = True
             return self._process_monomer(
-                match.group(1), chain_id, residue_idx, polymer_type
+                f"[{match.group(1)}]", chain_id, residue_idx, polymer_type
             )
 
         if polymer_type == "PEPTIDE":
@@ -402,11 +416,18 @@ class Molecule:
 
         if m_type in self.monomer_df and monomer_name in self.monomer_df[m_type]:
             monomer_info = self.monomer_df[m_type][monomer_name]
+        elif not bracketed:
+            # HELM writes inline SMILES in square brackets, so a bare name is a
+            # library symbol. Falling back to SMILES here would read a typo such
+            # as PEPTIDE1{B} as a boron atom and build it without complaining.
+            raise ValueError(
+                f"Monomer {monomer_name} is not in the {m_type} monomer library. Inline SMILES has to be written in square brackets. Check HELM."
+            )
         else:
+            # Deliberately not written back into monomer_df: that dictionary is
+            # shared by every Molecule through the cached monomer library, so
+            # writing here would grow it with every inline monomer ever parsed.
             monomer_info = _create_missing_monomer(monomer_name, m_type)
-            if m_type not in self.monomer_df:
-                self.monomer_df[m_type] = {}
-            self.monomer_df[m_type][monomer_name] = monomer_info
 
         return {
             "m_romol": monomer_info["m_romol"],
@@ -449,8 +470,15 @@ class Molecule:
             chain = chain.strip()
             match = self._bracket_re.search(chain)
             if not match:
-                warnings.warn(f"No sequence in polymer: {chain}")
-                continue
+                raise ValueError(
+                    f"Polymer {chain} is not of the form CHAIN{{sequence}}. Check HELM."
+                )
+
+            trailing = chain[match.end() :]
+            if trailing and not self._annotation_re.fullmatch(trailing):
+                raise ValueError(
+                    f"Unexpected text {trailing} after the sequence of polymer {chain}. Check HELM."
+                )
 
             chain_id = chain[: match.start()]
             polymer_type = self._extract_polymer_type(chain_id)
@@ -460,8 +488,9 @@ class Molecule:
 
             sequence = match.group(1)
             if not sequence:
-                warnings.warn(f"Empty polymer: {chain}")
-                continue
+                raise ValueError(
+                    f"Polymer {chain_id} has an empty sequence. Check HELM."
+                )
 
             residues = self._split_sequence_with_brackets(sequence)
             self.chain_offset[chain_id] = monomer_idx
@@ -509,12 +538,11 @@ class Molecule:
                             ")"
                         )
                         monomer_name = subresidue[1:-1] if is_base else subresidue
-                        monomer_name = (
-                            monomer_name[1:-1]
-                            if monomer_name.startswith("[")
-                            and monomer_name.endswith("]")
-                            else monomer_name
-                        )
+                        if is_base and prev_monomer is None:
+                            raise ValueError(
+                                f"Branch monomer ({monomer_name}) starts chain {chain_id} and has nothing to attach to. Check HELM."
+                            )
+
                         monomer = self._process_monomer(
                             monomer_name, chain_id, residue_idx, polymer_type
                         )
@@ -563,11 +591,6 @@ class Molecule:
                     raise ValueError("CHEM polymers must have exactly one residue")
                 monomer_name = residues[0]
                 residue_idx = 0
-                monomer_name = (
-                    monomer_name[1:-1]
-                    if monomer_name.startswith("[") and monomer_name.endswith("]")
-                    else monomer_name
-                )
                 monomer = self._process_monomer(
                     monomer_name, chain_id, residue_idx, polymer_type
                 )
@@ -578,56 +601,88 @@ class Molecule:
                 assert_never(polymer_type)
 
     @staticmethod
-    def _parse_connection(
-        connection_str: str,
-    ) -> tuple[str, int, int, str, int, int] | None:
-        """Parse a single connection string."""
+    def _parse_residue_number(value: str, bond_spec: str) -> int:
+        """Convert a 1-based residue number from a bond specification."""
+        try:
+            residue = int(value)
+        except ValueError:
+            raise ValueError(
+                f"Residue number {value} in {bond_spec} is not a number. Check HELM."
+            ) from None
+        if residue < 1:
+            raise ValueError(
+                f"Residue number {value} in {bond_spec} is not positive; residues are numbered from 1. Check HELM."
+            )
+        return residue - 1
+
+    @staticmethod
+    def _parse_rgroup_number(value: str, bond_spec: str) -> int:
+        """Convert an R-group label such as ``R3`` from a bond specification."""
+        match = Molecule._rgroup_re.fullmatch(value)
+        if not match:
+            raise ValueError(
+                f"R-group {value} in {bond_spec} is not of the form R<number>. Check HELM."
+            )
+        rgroup = int(match.group(1))
+        if rgroup < 1:
+            raise ValueError(
+                f"R-group {value} in {bond_spec} is not positive; R-groups are numbered from 1. Check HELM."
+            )
+        return rgroup
+
+    @staticmethod
+    def _parse_connection(connection_str: str) -> tuple[str, int, int, str, int, int]:
+        """Parse a single connection string.
+
+        A connection that cannot be parsed is an error rather than a warning:
+        skipping it would return a molecule that is quietly missing a bond.
+        """
         parts = connection_str.split(",")
         if len(parts) != 3:
-            warnings.warn(f"Invalid connection format: {connection_str}")
-            return None
+            raise ValueError(
+                f"Invalid connection format: {connection_str}. Check HELM."
+            )
 
         chain_id1, chain_id2, bond_spec = parts
 
-        try:
-            bond_parts = re.split(r"[-:]", bond_spec)
-            if len(bond_parts) != 4:
-                warnings.warn(f"Invalid bond format: {bond_spec}")
-                return None
+        bond_parts = re.split(r"[-:]", bond_spec)
+        if len(bond_parts) != 4:
+            raise ValueError(f"Invalid bond format: {bond_spec}. Check HELM.")
 
-            residue1, rgroup1, residue2, rgroup2 = bond_parts
+        residue1, rgroup1, residue2, rgroup2 = bond_parts
 
-            residue1 = int(residue1) - 1
-            residue2 = int(residue2) - 1
-            rgroup1 = int(rgroup1.replace("R", ""))
-            rgroup2 = int(rgroup2.replace("R", ""))
-        except (ValueError, IndexError) as e:
-            warnings.warn(f"Error parsing connection {connection_str}: {e}")
-            return None
-        else:
-            return chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2
+        return (
+            chain_id1,
+            Molecule._parse_residue_number(residue1, bond_spec),
+            Molecule._parse_rgroup_number(rgroup1, bond_spec),
+            chain_id2,
+            Molecule._parse_residue_number(residue2, bond_spec),
+            Molecule._parse_rgroup_number(rgroup2, bond_spec),
+        )
+
+    def _resolve_residue(self, chain_id: str, residue: int, context: str) -> int:
+        """Look up the monomer index of a 0-based residue of a declared chain."""
+        residues = self.residue_reps.get(chain_id)
+        if not residues:
+            raise ValueError(
+                f"Chain {chain_id} is not a polymer in this HELM string. Check {context}."
+            )
+        if not 0 <= residue < len(residues):
+            raise ValueError(
+                f"Residue {residue + 1} is out of range for chain {chain_id}, which has {len(residues)} residues. Check {context}."
+            )
+        return residues[residue]
 
     def _resolve_connection_endpoint(
         self, chain_id: str, residue: int, rgroup: int
     ) -> tuple[int, int]:
         """Resolve one side of a connection to (monomer index, attachment atom).
 
-        Residue and R-group numbers come straight from the HELM string and are
-        validated before use: numbering starts at one, so a stray ``0`` or an
-        index past the end of the chain would otherwise be read as a negative
-        index and silently bond the wrong atoms.
+        The R-group number is checked against the monomer rather than used as a
+        list index: numbering starts at one, so anything out of range would
+        otherwise be read as a negative index and silently bond the wrong atoms.
         """
-        residues = self.residue_reps.get(chain_id)
-        if not residues:
-            raise ValueError(
-                f"Chain {chain_id} of a connection is not a polymer in this HELM string. Check connections."
-            )
-        if not 0 <= residue < len(residues):
-            raise ValueError(
-                f"Residue {residue + 1} is out of range for chain {chain_id}, which has {len(residues)} residues. Check connections."
-            )
-
-        monomer_idx = residues[residue]
+        monomer_idx = self._resolve_residue(chain_id, residue, "connections")
         monomer = self.monomers[monomer_idx]
         attachment_points = monomer["m_attachmentPointIdx"]
         attachment_idx = (
@@ -646,11 +701,9 @@ class Molecule:
             return
 
         for connection_str in connections:
-            parsed = self._parse_connection(connection_str)
-            if not parsed:
-                continue
-
-            chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = parsed
+            chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = (
+                self._parse_connection(connection_str)
+            )
 
             monomer_idx1, attachment_idx1 = self._resolve_connection_endpoint(
                 chain_id1, residue1, rgroup1 - 1
@@ -677,18 +730,21 @@ class Molecule:
         for connection_str in connections:
             parts = connection_str.split(",")
             if len(parts) != 3:
-                warnings.warn(f"Invalid hydrogen bond format: {connection_str}")
-                continue
+                raise ValueError(
+                    f"Invalid hydrogen bond format: {connection_str}. Check HELM."
+                )
             chain_id1, chain_id2, bond_spec = parts
 
             bond_parts = re.split(r"[-:]", bond_spec)
             if len(bond_parts) != 4:
-                warnings.warn(f"Invalid hydrogen bond format: {bond_spec}")
-                continue
+                raise ValueError(
+                    f"Invalid hydrogen bond format: {bond_spec}. Check HELM."
+                )
 
-            residue1, _, residue2, _ = bond_parts
-            residue1 = int(residue1) - 1
-            residue2 = int(residue2) - 1
+            residue1 = self._parse_residue_number(bond_parts[0], bond_spec)
+            residue2 = self._parse_residue_number(bond_parts[2], bond_spec)
+            self._resolve_residue(chain_id1, residue1, "hydrogen bonds")
+            self._resolve_residue(chain_id2, residue2, "hydrogen bonds")
             self.hydrogen_bonds.append([chain_id1, residue1, chain_id2, residue2])
 
     def _mark_used_rgroup(self, monomer_idx: int, rgroup: int) -> None:
@@ -736,6 +792,20 @@ class Molecule:
             absolute_atom1_idx = self.offset[monomer1_idx] + atom1_idx
             absolute_atom2_idx = self.offset[monomer2_idx] + atom2_idx
 
+            # RDKit answers both of these with a C++ pre-condition violation,
+            # which tells a caller nothing about which connection is at fault.
+            if absolute_atom1_idx == absolute_atom2_idx:
+                raise ValueError(
+                    f"Monomer {monomer1_idx + 1} is bonded to itself through one atom. Check connections."
+                )
+            if (
+                self.mol.GetBondBetweenAtoms(absolute_atom1_idx, absolute_atom2_idx)
+                is not None
+            ):
+                raise ValueError(
+                    f"Duplicate bond between monomer {monomer1_idx + 1} and monomer {monomer2_idx + 1}. Check connections."
+                )
+
             self.mol.AddBond(
                 absolute_atom1_idx, absolute_atom2_idx, Chem.BondType.SINGLE
             )
@@ -747,15 +817,20 @@ class Molecule:
         if atom_type == "H":
             return
 
+        # Leaving the cap group off would delete the dummy atom along with the
+        # used R-groups and hand back a molecule that is quietly missing an atom.
         atomic_number = _cap_group_atomic_number(atom_type)
         if atomic_number is None:
-            warnings.warn(f"Unrecognized R-group type: {atom_type}")
-            return
+            raise ValueError(
+                f"Unsupported R-group cap group {atom_type}. Check monomers."
+            )
 
         try:
             self.mol.ReplaceAtom(atom_offset + atom_idx, Chem.Atom(atomic_number))
         except (RuntimeError, OverflowError) as e:
-            warnings.warn(f"Failed to replace R-group with {atom_type}: {e}")
+            raise ValueError(
+                f"Failed to replace R-group with {atom_type}: {e}. Check monomers."
+            ) from e
 
     def _sanitize(self) -> None:
         """Clean up the molecule by removing dummy atoms."""

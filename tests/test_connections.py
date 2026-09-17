@@ -5,7 +5,7 @@ from rdkit import Chem
 
 def test_residue_number_zero_is_rejected():
     """HELM residues are numbered from 1, so 0 must not wrap to the last one."""
-    with pytest.raises(ValueError, match="Residue 0 is out of range"):
+    with pytest.raises(ValueError, match=r"Residue number 0 .* is not positive"):
         Molecule("PEPTIDE1{A.G}$PEPTIDE1,PEPTIDE1,0:R1-2:R2$$$")
 
 
@@ -21,7 +21,7 @@ def test_connection_to_an_undeclared_chain_is_rejected():
 
 def test_rgroup_number_zero_is_rejected():
     """R0 must not index the attachment points from the end of the list."""
-    with pytest.raises(ValueError, match="R-group 0 is not present"):
+    with pytest.raises(ValueError, match=r"R-group R0 .* is not positive"):
         Molecule("RNA1{R(A)P.R(C)P}$RNA1,RNA1,1:R0-4:R3$$$")
 
 
