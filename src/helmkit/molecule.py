@@ -246,6 +246,28 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     }
 
 
+_cap_group_re = re.compile(r"([A-Z][a-z]?)H?\d*")
+
+
+@lru_cache
+def _cap_group_atomic_number(cap_group: str) -> int | None:
+    """Return the atomic number of the heavy atom of an R-group cap group.
+
+    Cap groups are written as a condensed formula such as ``OH``, ``O`` or
+    ``NH2``. Only the heavy atom has to be created: the hydrogens follow from
+    the free valence once the molecule is sanitized. ``None`` is returned for
+    cap groups that are not a single heavy atom.
+    """
+    match = _cap_group_re.fullmatch(cap_group)
+    if not match:
+        return None
+    with rdBase.BlockLogs():
+        try:
+            return Chem.GetPeriodicTable().GetAtomicNumber(match.group(1))
+        except RuntimeError:
+            return None
+
+
 class Molecule:
     """Single class for HELM to RDKit Mol conversion."""
 
@@ -514,12 +536,12 @@ class Molecule:
                                 attachment_point1 = None
                             if attachment_point1 is None:
                                 raise ValueError(
-                                    f"R-group {r_index + 1} is not present in monomer {prev_monomer} ({monomer1['m_abbr']}). Check monomers."
+                                    f"R-group {r_index + 1} is not present in monomer {prev_monomer + 1} ({monomer1['m_abbr']}). Check monomers."
                                 )
                             attachment_point2 = monomer2["m_attachmentPointIdx"][0]
                             if attachment_point2 is None:
                                 raise ValueError(
-                                    f"R-group 1 is not present in monomer {monomer_idx} ({monomer2['m_abbr']}). Check monomers."
+                                    f"R-group 1 is not present in monomer {monomer_idx + 1} ({monomer2['m_abbr']}). Check monomers."
                                 )
 
                             self.bondlist.append([
@@ -585,6 +607,39 @@ class Molecule:
         else:
             return chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2
 
+    def _resolve_connection_endpoint(
+        self, chain_id: str, residue: int, rgroup: int
+    ) -> tuple[int, int]:
+        """Resolve one side of a connection to (monomer index, attachment atom).
+
+        Residue and R-group numbers come straight from the HELM string and are
+        validated before use: numbering starts at one, so a stray ``0`` or an
+        index past the end of the chain would otherwise be read as a negative
+        index and silently bond the wrong atoms.
+        """
+        residues = self.residue_reps.get(chain_id)
+        if not residues:
+            raise ValueError(
+                f"Chain {chain_id} of a connection is not a polymer in this HELM string. Check connections."
+            )
+        if not 0 <= residue < len(residues):
+            raise ValueError(
+                f"Residue {residue + 1} is out of range for chain {chain_id}, which has {len(residues)} residues. Check connections."
+            )
+
+        monomer_idx = residues[residue]
+        monomer = self.monomers[monomer_idx]
+        attachment_points = monomer["m_attachmentPointIdx"]
+        attachment_idx = (
+            attachment_points[rgroup] if 0 <= rgroup < len(attachment_points) else None
+        )
+        if attachment_idx is None:
+            raise ValueError(
+                f"R-group {rgroup + 1} is not present in monomer {monomer_idx + 1} ({monomer['m_abbr']}). Check connections."
+            )
+
+        return monomer_idx, attachment_idx
+
     def _process_connections(self, connections: list[str]) -> None:
         """Process connections between chains."""
         if not connections:
@@ -596,25 +651,13 @@ class Molecule:
                 continue
 
             chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = parsed
-            rgroup1 -= 1
-            rgroup2 -= 1
 
-            monomer_idx1 = self.residue_reps[chain_id1][residue1]
-            monomer_idx2 = self.residue_reps[chain_id2][residue2]
-
-            monomer1 = self.monomers[monomer_idx1]
-            monomer2 = self.monomers[monomer_idx2]
-
-            attachment_idx1 = monomer1["m_attachmentPointIdx"][rgroup1]
-            if attachment_idx1 is None:
-                raise ValueError(
-                    f"R-group {rgroup1} is not present in monomer {monomer_idx1 + 1} ({monomer1['m_abbr']}). Check connections."
-                )
-            attachment_idx2 = monomer2["m_attachmentPointIdx"][rgroup2]
-            if attachment_idx2 is None:
-                raise ValueError(
-                    f"R-group {rgroup2} is not present in monomer {monomer_idx2 + 1} ({monomer2['m_abbr']}). Check connections."
-                )
+            monomer_idx1, attachment_idx1 = self._resolve_connection_endpoint(
+                chain_id1, residue1, rgroup1 - 1
+            )
+            monomer_idx2, attachment_idx2 = self._resolve_connection_endpoint(
+                chain_id2, residue2, rgroup2 - 1
+            )
 
             self.bondlist.append([
                 monomer_idx1,
@@ -623,8 +666,8 @@ class Molecule:
                 attachment_idx2,
             ])
 
-            self._mark_used_rgroup(monomer_idx1, rgroup1)
-            self._mark_used_rgroup(monomer_idx2, rgroup2)
+            self._mark_used_rgroup(monomer_idx1, rgroup1 - 1)
+            self._mark_used_rgroup(monomer_idx2, rgroup2 - 1)
 
     def _process_hydrogen_bonds(self, connections: list[str]) -> None:
         """Process hydrogen bonds."""
@@ -698,18 +741,21 @@ class Molecule:
             )
 
     def _replace_rgroup(self, atom_offset: int, atom_idx: int, atom_type: str) -> None:
-        """Replace an R-group with the appropriate atom type."""
-        rdkit_mol = self.mol
-        absolute_idx = atom_offset + atom_idx
+        """Replace an unused R-group with the heavy atom of its cap group."""
+        # A hydrogen cap needs no atom of its own: the dummy is dropped while
+        # sanitizing and RDKit fills the free valence with an implicit hydrogen.
+        if atom_type == "H":
+            return
 
-        if atom_type == "OH":
-            try:
-                oxygen_atom = Chem.Atom(8)  # Oxygen
-                rdkit_mol.ReplaceAtom(absolute_idx, oxygen_atom)
-            except (RuntimeError, OverflowError) as e:
-                warnings.warn(f"Failed to replace R-group with OH: {e}")
-        elif atom_type != "H":
+        atomic_number = _cap_group_atomic_number(atom_type)
+        if atomic_number is None:
             warnings.warn(f"Unrecognized R-group type: {atom_type}")
+            return
+
+        try:
+            self.mol.ReplaceAtom(atom_offset + atom_idx, Chem.Atom(atomic_number))
+        except (RuntimeError, OverflowError) as e:
+            warnings.warn(f"Failed to replace R-group with {atom_type}: {e}")
 
     def _sanitize(self) -> None:
         """Clean up the molecule by removing dummy atoms."""
