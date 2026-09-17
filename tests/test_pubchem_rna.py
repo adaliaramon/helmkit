@@ -17,8 +17,8 @@ DATA = Path(__file__).parent / "data" / "rna.ndjson.gz"
 # Where the corpus stood when this test was written. A fall in matches, or a
 # rise in mismatches, means something that used to be built correctly is not
 # any more.
-EXPECTED_MATCHES = 3032
-ALLOWED_MISMATCHES = 195
+EXPECTED_MATCHES = 3514
+ALLOWED_MISMATCHES = 271
 
 
 def load():
@@ -61,7 +61,7 @@ def test_nucleic_acids_from_pubchem():
     build for any reason other than a monomer the library does not carry, or
     that raises anything other than ValueError, fails the test outright. The remaining mismatches are
     HELM strings PubChem also maps to a stereoisomer the string itself does not
-    determine; about eighty of them are the 2'-fluoro sugar FR, where the
+    determine; a large share of them are the 2'-fluoro sugar FR, where the
     monomer library and PubChem disagree about which face the fluorine is on.
     """
     counts = collections.Counter()

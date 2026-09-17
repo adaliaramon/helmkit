@@ -643,7 +643,9 @@ class Molecule:
         if current:
             result.append(current)
 
-        return [r[1:-1] if r.startswith("[") and r.endswith("]") else r for r in result]
+        # The brackets are left on: _process_monomer strips them and uses their
+        # presence to tell an inline SMILES monomer from a library symbol.
+        return result
 
     def _process_polymers(self, polymers: list[str]) -> None:
         """Process polymer chains from HELM, creating backbone bonds on the fly."""
