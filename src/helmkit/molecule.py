@@ -21,6 +21,13 @@ from rdkit import rdBase
 
 MAX_RGROUPS = 4
 
+_FLIPPED_STEREO = {
+    Chem.BondStereo.STEREOE: Chem.BondStereo.STEREOZ,
+    Chem.BondStereo.STEREOZ: Chem.BondStereo.STEREOE,
+    Chem.BondStereo.STEREOCIS: Chem.BondStereo.STEREOTRANS,
+    Chem.BondStereo.STEREOTRANS: Chem.BondStereo.STEREOCIS,
+}
+
 
 def get_molecule_property(
     molecule: Chem.Mol, property_name: str, default: str | None = None
@@ -240,6 +247,11 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         raise ValueError(
             f"Monomer {monomer_name} is not a single connected fragment. Check HELM."
         )
+
+    # Parsing without sanitizing records `/` and `\` as bond directions but never
+    # works out the double bond geometry they describe, and sanitizing does not
+    # do it either, so a monomer written with E/Z geometry would lose it.
+    Chem.SetBondStereoFromDirections(mol)
 
     r_group_map = {}
     main_atoms = []
@@ -962,11 +974,72 @@ class Molecule:
                 f"Failed to replace R-group with {atom_type}: {e}. Check monomers."
             ) from e
 
+    def _move_stereo_references(self, deleted: set[int]) -> None:
+        """Move double bond stereo references off the atoms about to be deleted.
+
+        RDKit drops a reference that no longer exists, and a double bond with no
+        references loses the geometry the monomer declared. The atom an
+        inter-monomer bond was made to stands where the R-group stood, so it
+        takes the reference over unchanged; any other surviving neighbour is on
+        the opposite side of the double bond and flips the parity.
+        """
+        bonded: defaultdict[int, set[int]] = defaultdict(set)
+        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist:
+            first = self.offset[monomer1_idx] + atom1_idx
+            second = self.offset[monomer2_idx] + atom2_idx
+            bonded[first].add(second)
+            bonded[second].add(first)
+
+        for bond in self.mol.GetBonds():
+            if bond.GetStereo() not in _FLIPPED_STEREO:
+                continue
+            references = list(bond.GetStereoAtoms())
+            if len(references) != 2 or not deleted.intersection(references):
+                continue
+
+            ends = (bond.GetBeginAtomIdx(), bond.GetEndAtomIdx())
+            moved: list[int] = []
+            flip = False
+
+            for reference in references:
+                if reference not in deleted:
+                    moved.append(reference)
+                    continue
+                end = next(
+                    (e for e in ends if self.mol.GetBondBetweenAtoms(e, reference)),
+                    None,
+                )
+                if end is None:
+                    break
+                other_end = ends[1] if end == ends[0] else ends[0]
+                candidates = [
+                    neighbour.GetIdx()
+                    for neighbour in self.mol.GetAtomWithIdx(end).GetNeighbors()
+                    if neighbour.GetIdx() not in deleted
+                    and neighbour.GetIdx() != other_end
+                ]
+                if len(candidates) != 1:
+                    break
+                if candidates[0] not in bonded[end]:
+                    flip = not flip
+                moved.append(candidates[0])
+
+            if len(moved) != 2:
+                # Nothing dependable to point at, so drop the geometry rather
+                # than state one that might be the wrong way round.
+                bond.SetStereo(Chem.BondStereo.STEREONONE)
+                continue
+
+            bond.SetStereoAtoms(*moved)
+            if flip:
+                bond.SetStereo(_FLIPPED_STEREO[bond.GetStereo()])
+
     def _sanitize(self) -> None:
         """Clean up the molecule by removing dummy atoms."""
         pattern = Chem.MolFromSmarts("[#0]")
         matches = self.mol.GetSubstructMatches(pattern)
         atoms_to_delete = sorted({idx for match in matches for idx in match})
+        self._move_stereo_references(set(atoms_to_delete))
         self._mol = Chem.DeleteSubstructs(self._mol, pattern)
 
         def correction(offset: int, idx: int) -> int:
@@ -983,6 +1056,17 @@ class Molecule:
         self.offset = [
             offset - sum(d < offset for d in atoms_to_delete) for offset in self.offset
         ]
+
+        # Ring membership is not worked out by any of the above, and RDKit
+        # answers a ring query on a molecule without it by raising, which takes
+        # out ring descriptors and every SMARTS match that mentions a ring.
+        Chem.FastFindRings(self._mol)
+
+        # Stereo is carried on the double bond, but writing SMILES needs the
+        # direction of the single bonds around it, which nothing above sets. A
+        # molecule would report its geometry through InChI and lose it through
+        # SMILES.
+        Chem.SetDoubleBondNeighborDirections(self._mol)
 
     @property
     def bond_indices(self) -> list[int]:
