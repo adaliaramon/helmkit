@@ -253,7 +253,10 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         mol = Chem.RWMol(mol)
         pattern = Chem.MolFromSmarts("O[CX4]=O")
         matches = mol.GetSubstructMatches(pattern)
-        for drop_idx, *_ in matches:
+        # Removing an atom shifts every index above it down by one, so the
+        # indices are taken highest first. Working upwards would delete
+        # whatever had moved into the place of the second match.
+        for drop_idx in sorted({match[0] for match in matches}, reverse=True):
             mol.RemoveAtom(drop_idx)
         error = Chem.SanitizeMol(mol, catchErrors=True)
     if error:
@@ -308,12 +311,23 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     rgroup_vals: list[str | None] = [None] * MAX_RGROUPS
 
     if m_type == "aa" and "_R1" not in monomer_name:
+        # The amine a peptide bond is made to is the one on the alpha carbon,
+        # the carbon that also carries the carboxyl. Asking only for a secondary
+        # amine finds a side chain amine just as readily as the backbone one,
+        # and asking only for a primary amine misses a substituted backbone.
         matches = {
             idx
-            for _, idx, _ in mol.GetSubstructMatches(
-                Chem.MolFromSmarts("[#6][NX3H][#6]")
+            for idx, *_ in mol.GetSubstructMatches(
+                Chem.MolFromSmarts("[NX3;H1,H2][CX4][CX3]=O")
             )
         }
+        if len(matches) != 1:
+            matches = {
+                idx
+                for _, idx, _ in mol.GetSubstructMatches(
+                    Chem.MolFromSmarts("[#6][NX3H][#6]")
+                )
+            }
         if len(matches) == 0:
             matches = {
                 idx
@@ -329,15 +343,29 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
             attachment_points[0] = attachment_id
 
     if m_type == "aa" and "_R2" not in monomer_name:
-        matches = mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3H1]=O"))
-        hydroxyl = None
-        if len(matches) == 0:
-            acid = mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3](=O)[OH]"))
-            if len(acid) == 1:
-                matches = acid
-                hydroxyl = acid[0][2]
+        aldehydes = {
+            m[0] for m in mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3H1]=O"))
+        }
+        acids = {
+            m[0]: m[2]
+            for m in mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3](=O)[OH]"))
+        }
+        # The carboxyl a peptide bond is made to is the one on the alpha carbon,
+        # the carbon that also carries the amine. Asking only for an aldehyde or
+        # only for an acid finds a side chain carbonyl just as readily.
+        on_alpha = {
+            m[2]
+            for m in mol.GetSubstructMatches(Chem.MolFromSmarts("[#7][CX4][CX3]=O"))
+        } & (aldehydes | set(acids))
+        if len(on_alpha) == 1:
+            matches = on_alpha
+        elif aldehydes:
+            matches = aldehydes
+        else:
+            matches = set(acids)
         if len(matches) == 1:
-            attachment_id, *_ = matches[0]
+            attachment_id = next(iter(matches))
+            hydroxyl = acids.get(attachment_id)
 
             mol = Chem.RWMol(mol)
             if hydroxyl is None:
