@@ -65,6 +65,14 @@ def test():
             reasons.append(e)
             raise
             continue
+        # A molecule that will not sanitize is not a molecule. Sanitizing a
+        # copy leaves the one being compared alone.
+        try:
+            Chem.SanitizeMol(Chem.Mol(m.mol))
+        except Chem.MolSanitizeException as e:
+            errors.append(row)
+            reasons.append(f"does not sanitize: {e}")
+            continue
         inchi1 = Chem.MolToInchi(m.mol)
         if m.has_ambiguous_monomers:
             # Ignore stereo

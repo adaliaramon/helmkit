@@ -111,6 +111,19 @@ def check_invariants(molecule):
     assert Chem.MolToSmiles(molecule.mol) is not None
     molecule.mol.GetRingInfo().NumRings()
 
+    # A molecule that will not sanitize is not a molecule. Nothing along the
+    # way checks valences, so an atom given one bond too many comes back
+    # looking ordinary and fails only when somebody tries to use it. Sanitizing
+    # a copy leaves the one under test alone, since sanitizing can itself
+    # change perceived aromaticity.
+    try:
+        Chem.SanitizeMol(Chem.Mol(molecule.mol))
+    except Chem.MolSanitizeException as error:
+        raise AssertionError(f"does not sanitize: {error}") from error
+    assert Chem.MolFromSmiles(Chem.MolToSmiles(molecule.mol)) is not None, (
+        "cannot be read back from its own SMILES"
+    )
+
 
 @pytest.mark.parametrize("seed", range(4))
 def test_generated_helm_either_builds_correctly_or_raises_value_error(seed):

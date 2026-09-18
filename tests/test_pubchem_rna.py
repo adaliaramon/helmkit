@@ -71,9 +71,19 @@ def test_nucleic_acids_from_pubchem():
         references = [r["inchi"] for r in record["refs"]]
         try:
             with rdBase.BlockLogs():
-                built = Chem.MolToInchi(Molecule(helm).mol)
+                molecule = Molecule(helm).mol
+                built = Chem.MolToInchi(molecule)
         except ValueError as error:  # pragma: no cover - nothing reaches this
             raise AssertionError(f"{helm} failed to build: {error}") from error
+
+        # A molecule that will not sanitize is not a molecule; nothing on the
+        # way here checks valences. The copy keeps the one being compared as it
+        # was, since sanitizing can change perceived aromaticity.
+        try:
+            with rdBase.BlockLogs():
+                Chem.SanitizeMol(Chem.Mol(molecule))
+        except Chem.MolSanitizeException as error:
+            raise AssertionError(f"{helm} does not sanitize: {error}") from error
 
         if any(
             without_protonation(built) == without_protonation(r) for r in references
