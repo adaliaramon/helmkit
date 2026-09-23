@@ -32,7 +32,10 @@ _FLIPPED_STEREO = {
 def get_molecule_property(
     molecule: Chem.Mol, property_name: str, default: str | None = None
 ) -> str | None:
-    return molecule.GetProp(property_name, default=default)
+    # `Mol.GetProp` only accepts a `default` argument in recent RDKit releases.
+    if not molecule.HasProp(property_name):
+        return default
+    return molecule.GetProp(property_name)
 
 
 T = TypeVar("T")
