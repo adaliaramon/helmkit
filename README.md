@@ -8,6 +8,7 @@ A Python library for converting HELM (Hierarchical Editing Language for Macromol
 - [Installation](#installation)
 - [Quick Example](#quick-example)
 - [Understanding HELM Notation](#understanding-helm-notation)
+- [Mapping Atoms and Bonds to Monomers](#mapping-atoms-and-bonds-to-monomers)
 - [Using Custom Monomer Data](#using-custom-monomer-data)
 - [SDF File Structure Requirements](#sdf-file-structure-requirements)
 - [Parallel Processing of Peptides](#parallel-processing-of-peptides)
@@ -79,6 +80,47 @@ Where:
 - `PEPTIDE2{S.G.C}` defines the second chain
 - `PEPTIDE1,PEPTIDE2,1:R1-3:R3` defines a connection between the chains (R1 of residue 1 in PEPTIDE1 connects to R3 of residue 3 in PEPTIDE2)
 - `$` characters separate different sections of the HELM string
+
+## Mapping Atoms and Bonds to Monomers
+
+Besides the RDKit molecule, a `Molecule` records which monomer every atom came
+from and which bonds join one monomer to another. Together they describe the
+molecule as a graph of monomers:
+
+- `molecule.monomers` lists the monomers in the order they appear in the HELM
+  string, chain by chain. In an RNA chain the sugar, base and phosphate of a
+  nucleotide are separate monomers, so `RNA1{R(A)P.R(C)}` has the five monomers
+  `R`, `A`, `P`, `R` and `C`. `monomer["m_abbr"]` is the name of a monomer: its
+  `m_abbr` in the monomer library, or the SMILES string of an inline monomer.
+- `molecule.monomer_indices` gives, for every atom of `molecule.mol`, the index
+  in `molecule.monomers` of the monomer it came from. Each monomer's atoms are
+  contiguous and in the same order as the monomers.
+- `molecule.bond_indices` gives the index in `molecule.mol` of every bond
+  between two monomers: the backbone bonds along each chain, followed by the
+  bonds in the connection section.
+
+```python
+from helmkit import Molecule
+
+# A cyclic peptide: the side chains of the two cysteines form a disulfide bond
+molecule = Molecule("PEPTIDE1{A.C.G.C}$PEPTIDE1,PEPTIDE1,2:R3-4:R3$$$")
+mol = molecule.mol
+
+names = [monomer["m_abbr"] for monomer in molecule.monomers]
+monomer_of = molecule.monomer_indices
+
+edges = []
+for bond_idx in molecule.bond_indices:
+    bond = mol.GetBondWithIdx(bond_idx)
+    edges.append((monomer_of[bond.GetBeginAtomIdx()], monomer_of[bond.GetEndAtomIdx()]))
+
+print(names)  # ['A', 'C', 'G', 'C']
+print(edges)  # [(0, 1), (1, 2), (2, 3), (1, 3)]
+```
+
+Removing the bonds in `bond_indices`, for instance with
+`Chem.FragmentOnBonds(mol, molecule.bond_indices)`, splits the molecule into
+one fragment per monomer, unless a connection bonds a monomer to itself.
 
 ## Using Custom Monomer Data
 
