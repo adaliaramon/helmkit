@@ -9,7 +9,7 @@ from rdkit import Chem
 # whether it is bracketed, so a splitter that strips them makes every inline
 # monomer in an RNA chain look like an unknown symbol.
 
-INLINE = "[*OCC* |$_R1;;;_R2$|]"
+INLINE = "[*OCC* |$_R1;;;;_R2$|]"
 TRIPHOSPHATE = "[*P(=O)(O)OP(=O)(O)OP(=O)(O)O |$_R2;;;;;;;;;;;;|]"
 
 

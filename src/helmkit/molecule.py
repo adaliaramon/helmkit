@@ -329,6 +329,13 @@ def _number_rgroups(
             raise ValueError(
                 f"Monomer {monomer_name} labels more than one atom {label}."
             )
+        # Only dummy atoms are deleted once the molecule is built, so a label
+        # on a real atom would keep that atom as well as the bond made in its
+        # place, while the dummy it was meant for disappears.
+        if atom.GetAtomicNum() != 0:
+            raise ValueError(
+                f"Monomer {monomer_name} labels a {atom.GetSymbol()} atom {label}; only a dummy atom (*) can be an R-group."
+            )
         atom.SetProp("dummyLabel", f"R{r_num}")
         atom.SetIntProp("_MolFileRLabel", r_num)
         atom.SetProp("molFileValue", "*")

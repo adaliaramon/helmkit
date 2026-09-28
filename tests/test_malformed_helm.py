@@ -144,6 +144,20 @@ def test_a_branch_monomer_cannot_start_a_chain():
         Molecule("RNA1{(A)R}$$$$")
 
 
+@pytest.mark.parametrize(
+    ("monomer", "atom"),
+    [("*NCC(=O)CC* |$_R1;;;;;_R2;$|", "C"), ("*NCC(=O)* |$_R1;;;;_R2;$|", "O")],
+)
+def test_an_rgroup_label_on_a_real_atom_is_rejected(monomer, atom):
+    """A label one place out used to make that atom the R-group.
+
+    The atom stayed in the molecule as well as the bond made in its place, and
+    the dummy atom the label was meant for was deleted.
+    """
+    with pytest.raises(ValueError, match=f"labels a {atom} atom _R2"):
+        Molecule(f"PEPTIDE1{{A.[{monomer}].G}}$$$$")
+
+
 def test_a_disconnected_inline_monomer_is_rejected():
     with pytest.raises(ValueError, match="falls into separate fragments"):
         Molecule("PEPTIDE1{[CCO.CCO]}$$$$")
@@ -160,7 +174,7 @@ def test_inline_monomers_do_not_grow_the_shared_library():
     library = load_monomer_library()
     before = len(library["aa"])
 
-    Molecule("PEPTIDE1{[*N[C@@H](CCCCCCO)C(=O)* |$_R1;;;;;;;;;;;_R2$|]}$$$$")
+    Molecule("PEPTIDE1{[*N[C@@H](CCCCCCO)C(=O)* |$_R1;;;;;;;;;;;;_R2$|]}$$$$")
 
     assert len(library["aa"]) == before
 
@@ -251,7 +265,7 @@ def test_a_later_section_containing_a_bracket_does_not_break_the_split(tail):
 def test_separators_inside_an_inline_monomer_are_not_section_separators():
     """CXSMILES carries both `$` and `|` inside the brackets of a monomer."""
     molecule = Molecule(
-        "CHEM1{[*OCCO* |$_R1;;;;_R2$|]}|PEPTIDE1{A.C}$PEPTIDE1,CHEM1,2:R3-1:R1$$$"
+        "CHEM1{[*OCCO* |$_R1;;;;;_R2$|]}|PEPTIDE1{A.C}$PEPTIDE1,CHEM1,2:R3-1:R1$$$"
     )
 
     assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles(
