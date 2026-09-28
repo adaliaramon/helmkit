@@ -1,10 +1,12 @@
 import bisect
+import itertools
 import multiprocessing
 import re
 import warnings
 from collections import defaultdict
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Iterator
 from collections.abc import Sequence
 from functools import lru_cache
 from importlib.resources import files
@@ -21,6 +23,11 @@ from rdkit import rdBase
 
 MAX_RGROUPS = 4
 
+PolymerType = Literal["PEPTIDE", "RNA", "CHEM"]
+
+# The monomer library type that the monomers of each polymer type come from.
+_MONOMER_TYPES: dict[PolymerType, str] = {"PEPTIDE": "aa", "RNA": "rna", "CHEM": "chem"}
+
 _FLIPPED_STEREO = {
     Chem.BondStereo.STEREOE: Chem.BondStereo.STEREOZ,
     Chem.BondStereo.STEREOZ: Chem.BondStereo.STEREOE,
@@ -28,32 +35,22 @@ _FLIPPED_STEREO = {
     Chem.BondStereo.STEREOTRANS: Chem.BondStereo.STEREOCIS,
 }
 
-
+# A carbon bonded to one oxygen by a double bond, another by a single bond and
+# two further neighbours: a carboxyl carbon written with one bond too many.
+_OVERVALENT_CARBOXYL = Chem.MolFromSmarts("O[CX4]=O")
+_BACKBONE_AMINE = Chem.MolFromSmarts("[NX3;H1,H2][CX4][CX3]=O")
+_SECONDARY_AMINE = Chem.MolFromSmarts("[#6][NX3H][#6]")
+_PRIMARY_AMINE = Chem.MolFromSmarts("[NX3H2][#6]")
+_ALDEHYDE = Chem.MolFromSmarts("[CX3H1]=O")
+_CARBOXYLIC_ACID = Chem.MolFromSmarts("[CX3](=O)[OH]")
+_BACKBONE_CARBONYL = Chem.MolFromSmarts("[#7][CX4][CX3]=O")
 _DUMMY = Chem.MolFromSmarts("[#0]")
+# A dummy atom bonded to one end of a double bond, as (dummy, end, other end).
+_DUMMY_BY_DOUBLE_BOND = Chem.MolFromSmarts("[#0]~*=*")
 
 # `GetSubstructMatches` stops at 1000 matches unless told otherwise, which
 # would miss atoms in a long polymer.
 _ALL_MATCHES = 2**32 - 1
-
-
-def _dummy_atoms(molecule: Chem.Mol) -> list[int]:
-    """Return the indices of every dummy atom, in ascending order."""
-    matches = molecule.GetSubstructMatches(_DUMMY, maxMatches=_ALL_MATCHES)
-    return sorted(idx for (idx,) in matches)
-
-
-def _delete_atoms(molecule: Chem.RWMol, indices: Iterable[int]) -> None:
-    """Delete atoms in place, the way `Chem.DeleteSubstructs` does.
-
-    `Chem.DeleteSubstructs` itself cannot be used: it stops at the first 1000
-    matches like any other substructure search.
-    """
-    molecule.BeginBatchEdit()
-    for idx in indices:
-        molecule.RemoveAtom(idx)
-    molecule.CommitBatchEdit()
-    molecule.ClearComputedProps()
-    molecule.UpdatePropertyCache(strict=False)
 
 
 def get_molecule_property(
@@ -91,8 +88,24 @@ def parse_comma_separated_property(
 
     values = property_value.split(",")
     if convert_func:
-        return [convert_func(v) if v != "None" else None for v in values]
+        return [None if v == "None" else convert_func(v) for v in values]
     return [None if v == "None" else v for v in values]
+
+
+def _dummy_atoms(molecule: Chem.Mol) -> list[int]:
+    """Return the indices of every dummy atom, in ascending order."""
+    matches = molecule.GetSubstructMatches(_DUMMY, maxMatches=_ALL_MATCHES)
+    return sorted(idx for (idx,) in matches)
+
+
+def _delete_atoms(molecule: Chem.RWMol, indices: Iterable[int]) -> None:
+    """Delete atoms in place, the way `Chem.DeleteSubstructs` does."""
+    molecule.BeginBatchEdit()
+    for idx in indices:
+        molecule.RemoveAtom(idx)
+    molecule.CommitBatchEdit()
+    molecule.ClearComputedProps()
+    molecule.UpdatePropertyCache(strict=False)
 
 
 def infer_attachment_points(
@@ -106,17 +119,13 @@ def infer_attachment_points(
             attachment_points.append(None)
             continue
 
-        atom = molecule.GetAtomWithIdx(r_idx)
-        bonds: tuple[Chem.Bond, ...] = atom.GetBonds()
-
         # The attachment point has to be a real atom. Dummy atoms are all
         # deleted while sanitizing, so an R-group bonded only to other dummies
         # would leave the bonds made to it pointing at atoms that are gone and
         # drop the monomer out of the molecule without a word.
-        for bond in bonds:
-            other_idx = bond.GetOtherAtomIdx(r_idx)
-            if molecule.GetAtomWithIdx(other_idx).GetAtomicNum() != 0:
-                attachment_points.append(other_idx)
+        for neighbour in molecule.GetAtomWithIdx(r_idx).GetNeighbors():
+            if neighbour.GetAtomicNum() != 0:
+                attachment_points.append(neighbour.GetIdx())
                 break
         else:
             raise ValueError(
@@ -215,8 +224,8 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
             warnings.warn("Monomer without a symbol property will be skipped")
             continue
 
-        m_type = get_molecule_property(mol, "m_type", "")
-        if m_type not in ["aa", "rna", "chem"]:
+        m_type = get_molecule_property(mol, "m_type") or ""
+        if m_type not in _MONOMER_TYPES.values():
             warnings.warn(
                 f"Monomer {symbol} has unknown type {m_type} and will be skipped"
             )
@@ -231,27 +240,21 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
             ) from None
         validate_rgroups(symbol, mol, rgroups, rgroup_idx)
         validate_monomer_core(symbol, mol)
-        attachment_point_idx = infer_attachment_points(mol, rgroup_idx, symbol)
-
-        # m_abbr is only used for display, so fall back to the symbol when a
-        # library does not provide it instead of dropping the monomer.
-        abbr = get_molecule_property(mol, "m_abbr") or symbol
 
         monomers_dict[m_type][symbol] = {
             "m_romol": mol,
             "m_Rgroups": rgroups,
             "m_RgroupIdx": rgroup_idx,
-            "m_attachmentPointIdx": attachment_point_idx,
+            "m_attachmentPointIdx": infer_attachment_points(mol, rgroup_idx, symbol),
             "m_type": m_type,
-            "m_abbr": abbr,
+            # m_abbr is only used for display, so fall back to the symbol when
+            # a library does not provide it instead of dropping the monomer.
+            "m_abbr": get_molecule_property(mol, "m_abbr") or symbol,
         }
 
     return monomers_dict
 
 
-# Bounded: the cache key is an arbitrary monomer name, so an unbounded cache
-# would keep an entry for every distinct inline SMILES string ever parsed.
-@lru_cache(maxsize=4096)
 def _is_free_carbonyl_carbon(molecule: Chem.Mol, idx: int) -> bool:
     """Is this a carbonyl carbon that does not already carry a second oxygen?"""
     atom = molecule.GetAtomWithIdx(idx)
@@ -260,182 +263,194 @@ def _is_free_carbonyl_carbon(molecule: Chem.Mol, idx: int) -> bool:
 
     carbonyl = False
     for bond in atom.GetBonds():
-        other = bond.GetOtherAtom(atom)
-        if other.GetAtomicNum() != 8:
+        if bond.GetOtherAtom(atom).GetAtomicNum() != 8:
             continue
-        if bond.GetBondType() == Chem.BondType.DOUBLE:
-            carbonyl = True
-        else:
+        if bond.GetBondType() != Chem.BondType.DOUBLE:
             return False
+        carbonyl = True
     return carbonyl
 
 
-def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
-    mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
-    if mol is None:
-        if monomer_name.endswith("|") and not monomer_name.endswith("$|"):
-            return _create_missing_monomer(monomer_name[:-1] + "$|", m_type)
-        raise ValueError(
-            f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
-        )
+def _sanitize_inline_monomer(monomer_name: str, mol: Chem.Mol) -> Chem.Mol:
+    """Sanitize a monomer read from inline SMILES without sanitizing."""
     with rdBase.BlockLogs():
         error = Chem.SanitizeMol(mol, catchErrors=True)
-    if error == Chem.SanitizeFlags.SANITIZE_PROPERTIES:
-        mol = Chem.RWMol(mol)
-        pattern = Chem.MolFromSmarts("O[CX4]=O")
-        matches = mol.GetSubstructMatches(pattern)
-        # Removing an atom shifts every index above it down by one, so the
-        # indices are taken highest first. Working upwards would delete
-        # whatever had moved into the place of the second match.
-        for drop_idx in sorted({match[0] for match in matches}, reverse=True):
-            mol.RemoveAtom(drop_idx)
-        error = Chem.SanitizeMol(mol, catchErrors=True)
+        if error == Chem.SanitizeFlags.SANITIZE_PROPERTIES:
+            mol = Chem.RWMol(mol)
+            matches = mol.GetSubstructMatches(_OVERVALENT_CARBOXYL)
+            # Removing an atom shifts every index above it down by one, so the
+            # indices are taken highest first. Working upwards would delete
+            # whatever had moved into the place of the second match.
+            for drop_idx in sorted({match[0] for match in matches}, reverse=True):
+                mol.RemoveAtom(drop_idx)
+            error = Chem.SanitizeMol(mol, catchErrors=True)
     if error:
         raise ValueError(
             f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
         )
+
     validate_monomer_core(monomer_name, mol)
 
     # Parsing without sanitizing records `/` and `\` as bond directions but never
     # works out the double bond geometry they describe, and sanitizing does not
     # do it either, so a monomer written with E/Z geometry would lose it.
     Chem.SetBondStereoFromDirections(mol)
+    return mol
 
-    r_group_map = {}
-    main_atoms = []
+
+def _number_rgroups(
+    monomer_name: str, mol: Chem.Mol
+) -> tuple[Chem.RWMol, list[int | None]]:
+    """Mark the atoms labelled ``_R<n>`` as R-groups and move them to the end.
+
+    Returns the renumbered molecule and the index of each R-group atom, with
+    ``None`` for the R-groups the monomer does not have.
+    """
+    rgroup_atoms: dict[int, int] = {}
+    core_atoms: list[int] = []
 
     for atom in mol.GetAtoms():
-        idx = atom.GetIdx()
         label = atom.GetProp("atomLabel") if atom.HasProp("atomLabel") else ""
+        if not label.startswith("_R"):
+            core_atoms.append(atom.GetIdx())
+            continue
 
-        if label.startswith("_R"):
-            try:
-                r_num = int(label[2:])
-            except ValueError:
-                raise ValueError(
-                    f"Monomer {monomer_name} labels an atom {label}, which is not of the form _R<number>."
-                ) from None
-            if not 1 <= r_num <= MAX_RGROUPS:
-                raise ValueError(
-                    f"Monomer {monomer_name} labels an atom {label}; R-groups run from R1 to R{MAX_RGROUPS}."
-                )
-            if r_num in r_group_map:
-                raise ValueError(
-                    f"Monomer {monomer_name} labels more than one atom {label}."
-                )
-            atom.SetProp("dummyLabel", f"R{r_num}")
-            atom.SetIntProp("_MolFileRLabel", r_num)
-            atom.SetProp("molFileValue", "*")
-            r_group_map[r_num] = idx
-        else:
-            main_atoms.append(idx)
-
-    sorted_r = sorted(r_group_map.items())
-    r_group_idx = [idx for _, idx in sorted_r]
-    mol = Chem.RenumberAtoms(mol, main_atoms + r_group_idx)
-
-    rgroup_idx_full: list[int | None] = [None] * MAX_RGROUPS
-    for i, (r_num, _) in enumerate(sorted_r):
-        rgroup_idx_full[r_num - 1] = len(main_atoms) + i
-
-    attachment_points = infer_attachment_points(mol, rgroup_idx_full, monomer_name)
-    rgroup_vals: list[str | None] = [None] * MAX_RGROUPS
-
-    if m_type == "aa" and "_R1" not in monomer_name:
-        # The amine a peptide bond is made to is the one on the alpha carbon,
-        # the carbon that also carries the carboxyl. Asking only for a secondary
-        # amine finds a side chain amine just as readily as the backbone one,
-        # and asking only for a primary amine misses a substituted backbone.
-        matches = {
-            idx
-            for idx, *_ in mol.GetSubstructMatches(
-                Chem.MolFromSmarts("[NX3;H1,H2][CX4][CX3]=O")
+        try:
+            r_num = int(label[2:])
+        except ValueError:
+            raise ValueError(
+                f"Monomer {monomer_name} labels an atom {label}, which is not of the form _R<number>."
+            ) from None
+        if not 1 <= r_num <= MAX_RGROUPS:
+            raise ValueError(
+                f"Monomer {monomer_name} labels an atom {label}; R-groups run from R1 to R{MAX_RGROUPS}."
             )
-        }
-        if len(matches) != 1:
-            matches = {
-                idx
-                for _, idx, _ in mol.GetSubstructMatches(
-                    Chem.MolFromSmarts("[#6][NX3H][#6]")
-                )
-            }
-        if len(matches) == 0:
-            matches = {
-                idx
-                for idx, _ in mol.GetSubstructMatches(Chem.MolFromSmarts("[NX3H2][#6]"))
-            }
-        if len(matches) == 1:
-            attachment_id = matches.pop()
+        if r_num in rgroup_atoms:
+            raise ValueError(
+                f"Monomer {monomer_name} labels more than one atom {label}."
+            )
+        atom.SetProp("dummyLabel", f"R{r_num}")
+        atom.SetIntProp("_MolFileRLabel", r_num)
+        atom.SetProp("molFileValue", "*")
+        rgroup_atoms[r_num] = atom.GetIdx()
 
-            mol = Chem.RWMol(mol)
-            new_idx = mol.AddAtom(Chem.Atom(0))
-            mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
-            rgroup_idx_full[0] = new_idx
-            attachment_points[0] = attachment_id
+    rgroups = sorted(rgroup_atoms)
+    mol = Chem.RenumberAtoms(mol, core_atoms + [rgroup_atoms[r] for r in rgroups])
 
-    if m_type == "aa" and "_R2" not in monomer_name:
-        aldehydes = {
-            m[0] for m in mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3H1]=O"))
-        }
-        acids = {
-            m[0]: m[2]
-            for m in mol.GetSubstructMatches(Chem.MolFromSmarts("[CX3](=O)[OH]"))
-        }
-        # The carboxyl a peptide bond is made to is the one on the alpha carbon,
-        # the carbon that also carries the amine. Asking only for an aldehyde or
-        # only for an acid finds a side chain carbonyl just as readily.
-        on_alpha = {
-            m[2]
-            for m in mol.GetSubstructMatches(Chem.MolFromSmarts("[#7][CX4][CX3]=O"))
-        } & (aldehydes | set(acids))
-        if len(on_alpha) == 1:
-            matches = on_alpha
-        elif aldehydes:
-            matches = aldehydes
-        else:
-            matches = set(acids)
-        if len(matches) == 1:
-            attachment_id = next(iter(matches))
-            hydroxyl = acids.get(attachment_id)
+    rgroup_idx: list[int | None] = [None] * MAX_RGROUPS
+    for new_idx, r_num in enumerate(rgroups, start=len(core_atoms)):
+        rgroup_idx[r_num - 1] = new_idx
+    return Chem.RWMol(mol), rgroup_idx
 
-            mol = Chem.RWMol(mol)
-            if hydroxyl is None:
-                new_idx = mol.AddAtom(Chem.Atom(0))
-                mol.AddBond(attachment_id, new_idx, Chem.BondType.SINGLE)
-            else:
-                # The hydroxyl is the leaving group a peptide bond replaces, so
-                # it becomes the R-group itself. Hanging a second atom off the
-                # carboxyl carbon instead would give it five bonds as soon as
-                # anything bonded through that R-group.
-                mol.ReplaceAtom(hydroxyl, Chem.Atom(0))
-                new_idx = hydroxyl
-                rgroup_vals[1] = "OH"
-            rgroup_idx_full[1] = new_idx
-            attachment_points[1] = attachment_id
 
-    # An amino acid caps an unused R2 with OH, the way every amino acid in the
-    # monomer library does. Without it the carboxyl carbon keeps only its double
-    # bonded oxygen once the dummy is deleted and the residue becomes an
-    # aldehyde, so the same monomer spelled as SMILES and looked up by symbol
-    # would not agree. Only an explicitly labelled R2 is capped: an R2 inferred
-    # above sits on a carboxyl group that still carries its hydroxyl.
-    if m_type == "aa" and "_R2" in monomer_name:
+def _add_amine_rgroup(mol: Chem.RWMol) -> tuple[int, int] | None:
+    """Give an amino acid an R1 on its backbone amine.
+
+    Returns the new R-group atom and the amine it is bonded to, or ``None``
+    when there is no single amine to choose.
+    """
+    # The amine a peptide bond is made to is the one on the alpha carbon, the
+    # carbon that also carries the carboxyl. Asking only for a secondary amine
+    # finds a side chain amine just as readily as the backbone one, and asking
+    # only for a primary amine misses a substituted backbone.
+    amines = {m[0] for m in mol.GetSubstructMatches(_BACKBONE_AMINE)}
+    if len(amines) != 1:
+        amines = {m[1] for m in mol.GetSubstructMatches(_SECONDARY_AMINE)}
+    if not amines:
+        amines = {m[0] for m in mol.GetSubstructMatches(_PRIMARY_AMINE)}
+    if len(amines) != 1:
+        return None
+
+    (amine,) = amines
+    rgroup = mol.AddAtom(Chem.Atom(0))
+    mol.AddBond(amine, rgroup, Chem.BondType.SINGLE)
+    return rgroup, amine
+
+
+def _add_carboxyl_rgroup(mol: Chem.RWMol) -> tuple[int, int, str | None] | None:
+    """Give an amino acid an R2 on its backbone carbonyl.
+
+    Returns the R-group atom, the carbonyl carbon it is bonded to and the cap
+    group it replaced, or ``None`` when there is no single carbonyl to choose.
+    """
+    aldehydes = {m[0] for m in mol.GetSubstructMatches(_ALDEHYDE)}
+    acids = {m[0]: m[2] for m in mol.GetSubstructMatches(_CARBOXYLIC_ACID)}
+    # The carboxyl a peptide bond is made to is the one on the alpha carbon, the
+    # carbon that also carries the amine. Asking only for an aldehyde or only
+    # for an acid finds a side chain carbonyl just as readily.
+    on_alpha = {m[2] for m in mol.GetSubstructMatches(_BACKBONE_CARBONYL)} & (
+        aldehydes | acids.keys()
+    )
+    carbonyls = on_alpha if len(on_alpha) == 1 else aldehydes or set(acids)
+    if len(carbonyls) != 1:
+        return None
+
+    (carbonyl,) = carbonyls
+    hydroxyl = acids.get(carbonyl)
+    if hydroxyl is None:
+        rgroup = mol.AddAtom(Chem.Atom(0))
+        mol.AddBond(carbonyl, rgroup, Chem.BondType.SINGLE)
+        return rgroup, carbonyl, None
+
+    # The hydroxyl is the leaving group a peptide bond replaces, so it becomes
+    # the R-group itself. Hanging a second atom off the carboxyl carbon instead
+    # would give it five bonds as soon as anything bonded through that R-group.
+    mol.ReplaceAtom(hydroxyl, Chem.Atom(0))
+    return hydroxyl, carbonyl, "OH"
+
+
+def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
+    """Build a monomer from an inline CXSMILES string with ``_R<n>`` labels."""
+    mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
+    if mol is None:
+        # Accept CXSMILES atom labels whose closing `$` is missing.
+        if monomer_name.endswith("|") and not monomer_name.endswith("$|"):
+            return _create_missing_monomer(monomer_name[:-1] + "$|", m_type)
+        raise ValueError(
+            f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
+        )
+
+    mol = _sanitize_inline_monomer(monomer_name, mol)
+    mol, rgroup_idx = _number_rgroups(monomer_name, mol)
+    attachment_points = infer_attachment_points(mol, rgroup_idx, monomer_name)
+    caps: list[str | None] = [None] * MAX_RGROUPS
+
+    if m_type == "aa":
+        has_r1, has_r2 = rgroup_idx[0] is not None, rgroup_idx[1] is not None
+
+        if not has_r1 and (r1 := _add_amine_rgroup(mol)):
+            rgroup_idx[0], attachment_points[0] = r1
+
+        if not has_r2 and (r2 := _add_carboxyl_rgroup(mol)):
+            rgroup_idx[1], attachment_points[1], caps[1] = r2
+
+        # An amino acid caps an unused R2 with OH, the way every amino acid in
+        # the monomer library does. Without it the carboxyl carbon keeps only
+        # its double bonded oxygen once the dummy is deleted and the residue
+        # becomes an aldehyde, so the same monomer spelled as SMILES and looked
+        # up by symbol would not agree. Only an explicitly labelled R2 is
+        # capped: an R2 inferred above sits on a carboxyl group that still
+        # carries its hydroxyl.
         r2_attachment = attachment_points[1]
-        if r2_attachment is not None and _is_free_carbonyl_carbon(mol, r2_attachment):
-            rgroup_vals[1] = "OH"
+        if (
+            has_r2
+            and r2_attachment is not None
+            and _is_free_carbonyl_carbon(mol, r2_attachment)
+        ):
+            caps[1] = "OH"
 
     mol.SetProp("symbol", monomer_name)
     mol.SetProp("m_abbr", monomer_name)
     mol.SetProp("m_type", m_type)
-    mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx_full)))
-    mol.SetProp("m_Rgroups", ",".join(map(str, rgroup_vals)))
+    mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx)))
+    mol.SetProp("m_Rgroups", ",".join(map(str, caps)))
     mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
     mol.SetProp("natAnalog", "")
 
     return {
         "m_romol": mol,
-        "m_Rgroups": rgroup_vals,
-        "m_RgroupIdx": rgroup_idx_full,
+        "m_Rgroups": caps,
+        "m_RgroupIdx": rgroup_idx,
         "m_attachmentPointIdx": attachment_points,
         "m_type": m_type,
         "m_abbr": monomer_name,
@@ -469,48 +484,37 @@ class Molecule:
 
     _bracket_re = re.compile(r"{(.*?)}")
     _annotation_re = re.compile(r'"[^"]*"')
+    _chain_id_re = re.compile(r"([A-Z]+)(\d+)")
+    _ambiguous_re = re.compile(r"\([^,]+,\[([^\]]+)\]\)")
+    _bond_spec_re = re.compile(r"[-:]")
     _rgroup_re = re.compile(r"R(\d+)")
 
     def __init__(self, helm: str, monomer_df: MonomerLibrary | None = None):
         """Initialize a Molecule object from a HELM string."""
-        self._mol = None
-        self.offset = []
-        self.bondlist = []
-        self.monomers = []
-        self.chain_offset = {}
-        self.residue_reps = defaultdict(list)
+        self.monomer_df = load_monomer_library() if monomer_df is None else monomer_df
+        self.monomers: list[MonomerData] = []
+        # Each inter-monomer bond as [monomer1, atom1, monomer2, atom2], with
+        # atom indices relative to their monomer.
+        self.bondlist: list[list[int]] = []
+        # The index of the first atom of each monomer, followed by the total.
+        self.offset: list[int] = []
+        self.chain_offset: dict[str, int] = {}
+        self.residue_reps: defaultdict[str, list[int]] = defaultdict(list)
         self.has_ambiguous_monomers = False
         self.used_rgroups: set[tuple[int, int]] = set()
-        self.hydrogen_bonds = []
-
-        if monomer_df is None:
-            self.monomer_df = load_monomer_library()
-        else:
-            self.monomer_df = monomer_df
+        self.hydrogen_bonds: list[list[str | int]] = []
 
         self._parse_helm_string(helm)
-        self._build_molecule()
+        self.mol: Chem.Mol = self._build_molecule()
 
-        if not isinstance(self._mol, Chem.rdchem.Mol):
-            raise TypeError("Failed to initialize RDKit Mol object")
-
-    @property
-    def mol(self) -> Chem.Mol:
-        assert self._mol is not None
-        return self._mol
+    # Parsing
 
     def _parse_helm_string(self, helm: str) -> None:
-        """Parse a HELM string into molecular components."""
-        polymer_sections, connection_sections, hydrogen_bonds_sections, _, _ = (
-            self._split_helm_sections(helm)
-        )
-
-        if not polymer_sections:
-            raise ValueError(f"No simple polymers in HELM string {helm}")
-
-        self._process_polymers(polymer_sections)
-        self._process_connections(connection_sections)
-        self._process_hydrogen_bonds(hydrogen_bonds_sections)
+        """Parse a HELM string into monomers and the bonds between them."""
+        polymers, connections, hydrogen_bonds = self._split_helm_sections(helm)
+        self._process_polymers(polymers)
+        self._process_connections(connections)
+        self._process_hydrogen_bonds(hydrogen_bonds)
 
     @staticmethod
     def _split_outside_brackets(
@@ -525,191 +529,106 @@ class Molecule:
         happens to contain a bracket.
         """
         parts: list[str] = []
-        current: list[str] = []
-        depth = 0
+        start = depth = 0
 
-        for char in text:
+        for i, char in enumerate(text):
             if char == "[":
                 depth += 1
             elif char == "]":
                 depth = max(depth - 1, 0)
-
-            if (
+            elif (
                 char == separator
                 and depth == 0
                 and (not maxsplit or len(parts) < maxsplit)
             ):
-                parts.append("".join(current))
-                current = []
-            else:
-                current.append(char)
+                parts.append(text[start:i])
+                start = i + 1
 
         if depth:
             raise ValueError(f"Unbalanced brackets in {text}. Check HELM.")
 
-        parts.append("".join(current))
+        parts.append(text[start:])
         return parts
 
-    def _split_helm_sections(
-        self, helm: str
-    ) -> tuple[list[str], list[str], list[str], str, str]:
-        parts: list[str] = self._split_outside_brackets(helm, "$", 4)
-        parts.extend([""] * (5 - len(parts)))
+    @staticmethod
+    def _split_helm_sections(helm: str) -> tuple[list[str], list[str], list[str]]:
+        """Return the polymers, connections and hydrogen bonds of a HELM string.
 
-        polymers: list[str] = self._split_outside_brackets(parts[0], "|")
-        connections = parts[1].split("|") if parts[1] else []
-        hydrogen_bonds = parts[2].split("|") if parts[2] else []
+        The annotation and version sections that may follow are not used.
+        """
+        sections = Molecule._split_outside_brackets(helm, "$", maxsplit=4)
+        sections += [""] * (3 - len(sections))
 
-        return polymers, connections, hydrogen_bonds, parts[3], parts[4]
+        polymers = Molecule._split_outside_brackets(sections[0], "|")
+        connections = sections[1].split("|") if sections[1] else []
+        hydrogen_bonds = sections[2].split("|") if sections[2] else []
+        return polymers, connections, hydrogen_bonds
 
     @staticmethod
     def _split_sequence_with_brackets(sequence: str) -> list[str]:
         """Split a sequence into individual monomers, respecting brackets."""
-        result = []
-        current = ""
-        bracket_depth = 0
+        parts: list[str] = []
+        start = depth = 0
 
-        for char in sequence:
+        for i, char in enumerate(sequence):
             if char in "[(":
-                bracket_depth += 1
-                current += char
+                depth += 1
             elif char in "])":
-                bracket_depth -= 1
-                if bracket_depth < 0:
+                depth -= 1
+                if depth < 0:
                     raise ValueError(
                         f"Unbalanced brackets in sequence {sequence}. Check HELM."
                     )
-                current += char
-            elif char == "." and bracket_depth == 0:
-                result.append(current)
-                current = ""
-            else:
-                current += char
+            elif char == "." and depth == 0:
+                parts.append(sequence[start:i])
+                start = i + 1
 
-        if bracket_depth:
+        if depth:
             raise ValueError(f"Unbalanced brackets in sequence {sequence}. Check HELM.")
 
         # Appended even when empty: a trailing separator leaves a nameless
         # residue behind, which _process_monomer rejects rather than dropping.
-        result.append(current)
-
-        return result
+        parts.append(sequence[start:])
+        return parts
 
     @staticmethod
-    def _attachment_point(
-        monomer: MonomerData, rgroup: int, position: int, context: str
-    ) -> int:
-        """Look up the atom a monomer's R-group bonds through.
+    def _parse_rna_string(sequence: str) -> list[str]:
+        """Split an RNA residue such as ``R(A)P`` into its monomers.
 
-        The R-group number is checked against the monomer rather than used as a
-        list index: a monomer that declares fewer R-groups than the bond needs
-        would otherwise come back as a bare IndexError.
+        The brackets are left on: _process_monomer strips them and uses their
+        presence to tell an inline SMILES monomer from a library symbol.
         """
-        attachment_points = monomer["m_attachmentPointIdx"]
-        attachment = (
-            attachment_points[rgroup] if 0 <= rgroup < len(attachment_points) else None
-        )
-        if attachment is None:
-            raise ValueError(
-                f"R-group {rgroup + 1} is not present in monomer {position} ({monomer['m_abbr']}). Check {context}."
-            )
-        return attachment
+        parts: list[str] = []
+        start = depth = 0
+
+        for i, char in enumerate(sequence):
+            if char in "[(":
+                depth += 1
+            elif char in "])":
+                depth -= 1
+            if depth == 0:
+                parts.append(sequence[start : i + 1])
+                start = i + 1
+
+        if start < len(sequence):
+            parts.append(sequence[start:])
+        return parts
 
     @staticmethod
-    def _extract_polymer_type(chain_str: str) -> Literal["PEPTIDE", "RNA", "CHEM"]:
-        """Extract chain ID and return (chain_id, polymer_type)."""
-        match = re.fullmatch(r"([A-Z]+)(\d+)", chain_str)
+    def _extract_polymer_type(chain_id: str) -> PolymerType:
+        """Return the polymer type of a chain ID such as ``PEPTIDE1``."""
+        match = Molecule._chain_id_re.fullmatch(chain_id)
         if not match:
-            raise ValueError(f"Invalid chain format: {chain_str}")
+            raise ValueError(f"Invalid chain format: {chain_id}")
 
-        polymer_type: str = match.group(1)
-        if polymer_type not in {"PEPTIDE", "RNA", "CHEM"}:
+        polymer_type = match.group(1)
+        if polymer_type not in _MONOMER_TYPES:
             raise ValueError(f"Unsupported polymer type: {polymer_type}")
 
         return polymer_type
 
-    def _process_monomer(
-        self, monomer_name: str, chain_id: str, residue_idx: int, polymer_type: str
-    ) -> MonomerData:
-        """Process a single monomer."""
-        bracketed = monomer_name.startswith("[") and monomer_name.endswith("]")
-        if bracketed:
-            monomer_name = monomer_name[1:-1]
-        if not monomer_name:
-            raise ValueError(f"Monomer {residue_idx + 1} has no name. Check HELM.")
-
-        # Check for (a,[b]) pattern
-        match = re.fullmatch(r"\([^,]+,\[([^\]]+)\]\)", monomer_name)
-        if match:
-            # Extract the 'b' from (a,[b]) and recurse
-            self.has_ambiguous_monomers = True
-            return self._process_monomer(
-                f"[{match.group(1)}]", chain_id, residue_idx, polymer_type
-            )
-
-        if polymer_type == "PEPTIDE":
-            m_type = "aa"
-        elif polymer_type == "RNA":
-            m_type = "rna"
-        elif polymer_type == "CHEM":
-            m_type = "chem"
-        else:
-            m_type = "aa"
-
-        if m_type in self.monomer_df and monomer_name in self.monomer_df[m_type]:
-            monomer_info = self.monomer_df[m_type][monomer_name]
-        elif not bracketed:
-            # HELM writes inline SMILES in square brackets, so a bare name is a
-            # library symbol. Falling back to SMILES here would read a typo such
-            # as PEPTIDE1{B} as a boron atom and build it without complaining.
-            raise ValueError(
-                f"Monomer {monomer_name} is not in the {m_type} monomer library. Inline SMILES has to be written in square brackets. Check HELM."
-            )
-        else:
-            # Deliberately not written back into monomer_df: that dictionary is
-            # shared by every Molecule through the cached monomer library, so
-            # writing here would grow it with every inline monomer ever parsed.
-            monomer_info = _create_missing_monomer(monomer_name, m_type)
-
-        return {
-            "m_romol": monomer_info["m_romol"],
-            "m_Rgroups": monomer_info["m_Rgroups"][:],
-            "m_RgroupIdx": monomer_info["m_RgroupIdx"],
-            "m_attachmentPointIdx": monomer_info["m_attachmentPointIdx"],
-            "m_type": monomer_info["m_type"],
-            "m_abbr": monomer_info["m_abbr"],
-        }
-
-    @staticmethod
-    def _parse_rna_string(sequence: str) -> list[str]:
-        result = []
-        current = ""
-        bracket_depth = 0
-
-        for char in sequence:
-            if char in "[(":
-                bracket_depth += 1
-                current += char
-            elif char in "])":
-                bracket_depth -= 1
-                current += char
-            else:
-                current += char
-            if bracket_depth == 0:
-                result.append(current)
-                current = ""
-
-        if current:
-            result.append(current)
-
-        # The brackets are left on: _process_monomer strips them and uses their
-        # presence to tell an inline SMILES monomer from a library symbol.
-        return result
-
     def _process_polymers(self, polymers: list[str]) -> None:
-        """Process polymer chains from HELM, creating backbone bonds on the fly."""
-        monomer_idx = 0
-
+        """Add the monomers of each polymer chain and the bonds along it."""
         for chain in polymers:
             chain = chain.strip()
             match = self._bracket_re.search(chain)
@@ -737,103 +656,98 @@ class Molecule:
                 )
 
             residues = self._split_sequence_with_brackets(sequence)
-            self.chain_offset[chain_id] = monomer_idx
+            self.chain_offset[chain_id] = len(self.monomers)
 
             if polymer_type == "PEPTIDE":
-                for residue_idx, monomer_name in enumerate(residues):
-                    monomer = self._process_monomer(
-                        monomer_name, chain_id, residue_idx, polymer_type
-                    )
-
-                    self.monomers.append(monomer)
-                    self.residue_reps[chain_id].append(monomer_idx)
-
-                    if residue_idx > 0:
-                        monomer1 = self.monomers[monomer_idx - 1]
-                        monomer2 = monomer
-
-                        attachment_point1 = self._attachment_point(
-                            monomer1, 1, monomer_idx, "monomers"
-                        )
-                        attachment_point2 = self._attachment_point(
-                            monomer2, 0, monomer_idx + 1, "monomers"
-                        )
-
-                        self.bondlist.append([
-                            monomer_idx - 1,
-                            attachment_point1,
-                            monomer_idx,
-                            attachment_point2,
-                        ])
-                        self._mark_used_rgroup(monomer_idx - 1, 1)
-                        self._mark_used_rgroup(monomer_idx, 0)
-
-                    monomer_idx += 1
+                self._process_peptide(chain_id, residues)
             elif polymer_type == "RNA":
-                prev_monomer = None
-                for residue_idx, residue in enumerate(residues):
-                    split_residue = self._parse_rna_string(residue)
-                    if not split_residue:
-                        raise ValueError(
-                            f"Monomer {residue_idx + 1} has no name. Check HELM."
-                        )
-                    for subresidue in split_residue:
-                        is_base = subresidue.startswith("(") and subresidue.endswith(
-                            ")"
-                        )
-                        monomer_name = subresidue[1:-1] if is_base else subresidue
-                        if is_base and prev_monomer is None:
-                            raise ValueError(
-                                f"Branch monomer ({monomer_name}) starts chain {chain_id} and has nothing to attach to. Check HELM."
-                            )
-
-                        monomer = self._process_monomer(
-                            monomer_name, chain_id, residue_idx, polymer_type
-                        )
-
-                        self.monomers.append(monomer)
-                        self.residue_reps[chain_id].append(monomer_idx)
-
-                        if prev_monomer is not None:
-                            monomer1 = self.monomers[prev_monomer]
-                            monomer2 = monomer
-
-                            # Attach to R3 to R1 if the monomer is a base, R2 to R1 otherwise
-                            r_index = 2 if is_base else 1
-                            attachment_point1 = self._attachment_point(
-                                monomer1, r_index, prev_monomer + 1, "monomers"
-                            )
-                            attachment_point2 = self._attachment_point(
-                                monomer2, 0, monomer_idx + 1, "monomers"
-                            )
-
-                            self.bondlist.append([
-                                prev_monomer,
-                                attachment_point1,
-                                monomer_idx,
-                                attachment_point2,
-                            ])
-                            self._mark_used_rgroup(prev_monomer, r_index)
-                            self._mark_used_rgroup(monomer_idx, 0)
-
-                        # Only set prev_monomer if the monomer is not a base
-                        if not is_base:
-                            prev_monomer = monomer_idx
-
-                        monomer_idx += 1
+                self._process_rna(chain_id, residues)
             elif polymer_type == "CHEM":
                 if len(residues) != 1:
                     raise ValueError("CHEM polymers must have exactly one residue")
-                monomer_name = residues[0]
-                residue_idx = 0
-                monomer = self._process_monomer(
-                    monomer_name, chain_id, residue_idx, polymer_type
-                )
-                self.monomers.append(monomer)
-                self.residue_reps[chain_id].append(monomer_idx)
-                monomer_idx += 1
+                self._add_monomer(residues[0], chain_id, 0, "chem")
             else:
                 assert_never(polymer_type)
+
+    def _process_peptide(self, chain_id: str, residues: list[str]) -> None:
+        """Add a peptide chain, bonding each residue's R2 to the next one's R1."""
+        for residue_idx, monomer_name in enumerate(residues):
+            monomer_idx = self._add_monomer(monomer_name, chain_id, residue_idx, "aa")
+            if residue_idx > 0:
+                self._add_bond(monomer_idx - 1, 1, monomer_idx, 0, "monomers")
+
+    def _process_rna(self, chain_id: str, residues: list[str]) -> None:
+        """Add an RNA chain, where each residue holds several monomers.
+
+        Backbone monomers are bonded R2 to the next one's R1. A monomer in
+        parentheses is a branch, such as a base, and hangs off R3 of the
+        backbone monomer before it.
+        """
+        previous = None
+        for residue_idx, residue in enumerate(residues):
+            parts = self._parse_rna_string(residue)
+            if not parts:
+                raise ValueError(f"Monomer {residue_idx + 1} has no name. Check HELM.")
+
+            for part in parts:
+                is_branch = part.startswith("(") and part.endswith(")")
+                monomer_name = part[1:-1] if is_branch else part
+                if is_branch and previous is None:
+                    raise ValueError(
+                        f"Branch monomer ({monomer_name}) starts chain {chain_id} and has nothing to attach to. Check HELM."
+                    )
+
+                monomer_idx = self._add_monomer(
+                    monomer_name, chain_id, residue_idx, "rna"
+                )
+                if previous is not None:
+                    rgroup = 2 if is_branch else 1
+                    self._add_bond(previous, rgroup, monomer_idx, 0, "monomers")
+                if not is_branch:
+                    previous = monomer_idx
+
+    def _add_monomer(
+        self, monomer_name: str, chain_id: str, residue_idx: int, m_type: str
+    ) -> int:
+        """Append a monomer to the molecule and return its index."""
+        self.monomers.append(self._process_monomer(monomer_name, residue_idx, m_type))
+        monomer_idx = len(self.monomers) - 1
+        self.residue_reps[chain_id].append(monomer_idx)
+        return monomer_idx
+
+    def _process_monomer(
+        self, monomer_name: str, residue_idx: int, m_type: str
+    ) -> MonomerData:
+        """Look a monomer up in the library, or build it from inline SMILES."""
+        bracketed = monomer_name.startswith("[") and monomer_name.endswith("]")
+        if bracketed:
+            monomer_name = monomer_name[1:-1]
+        if not monomer_name:
+            raise ValueError(f"Monomer {residue_idx + 1} has no name. Check HELM.")
+
+        # An ambiguous monomer (a,[b]) is built as its last alternative.
+        ambiguous = self._ambiguous_re.fullmatch(monomer_name)
+        if ambiguous:
+            self.has_ambiguous_monomers = True
+            return self._process_monomer(f"[{ambiguous.group(1)}]", residue_idx, m_type)
+
+        monomer = self.monomer_df.get(m_type, {}).get(monomer_name)
+        if monomer is None:
+            if not bracketed:
+                # HELM writes inline SMILES in square brackets, so a bare name
+                # is a library symbol. Falling back to SMILES here would read a
+                # typo such as PEPTIDE1{B} as a boron atom and build it without
+                # complaining.
+                raise ValueError(
+                    f"Monomer {monomer_name} is not in the {m_type} monomer library. Inline SMILES has to be written in square brackets. Check HELM."
+                )
+            # Deliberately not written back into monomer_df: that dictionary is
+            # shared by every Molecule through the cached monomer library, so
+            # writing here would grow it with every inline monomer ever parsed.
+            monomer = _create_missing_monomer(monomer_name, m_type)
+
+        # The cap groups are copied because bonding clears the ones it uses.
+        return {**monomer, "m_Rgroups": monomer["m_Rgroups"][:]}
 
     @staticmethod
     def _parse_residue_number(value: str, bond_spec: str) -> int:
@@ -863,11 +777,11 @@ class Molecule:
             raise ValueError(
                 f"R-group {value} in {bond_spec} is not positive; R-groups are numbered from 1. Check HELM."
             )
-        return rgroup
+        return rgroup - 1
 
     @staticmethod
     def _parse_connection(connection_str: str) -> tuple[str, int, int, str, int, int]:
-        """Parse a single connection string.
+        """Parse a connection into its two chains, 0-based residues and R-groups.
 
         A connection that cannot be parsed is an error rather than a warning:
         skipping it would return a molecule that is quietly missing a bond.
@@ -880,7 +794,7 @@ class Molecule:
 
         chain_id1, chain_id2, bond_spec = parts
 
-        bond_parts = re.split(r"[-:]", bond_spec)
+        bond_parts = Molecule._bond_spec_re.split(bond_spec)
         if len(bond_parts) != 4:
             raise ValueError(f"Invalid bond format: {bond_spec}. Check HELM.")
 
@@ -908,54 +822,18 @@ class Molecule:
             )
         return residues[residue]
 
-    def _resolve_connection_endpoint(
-        self, chain_id: str, residue: int, rgroup: int
-    ) -> tuple[int, int]:
-        """Resolve one side of a connection to (monomer index, attachment atom).
-
-        The R-group number is checked against the monomer rather than used as a
-        list index: numbering starts at one, so anything out of range would
-        otherwise be read as a negative index and silently bond the wrong atoms.
-        """
-        monomer_idx = self._resolve_residue(chain_id, residue, "connections")
-        attachment_idx = self._attachment_point(
-            self.monomers[monomer_idx], rgroup, monomer_idx + 1, "connections"
-        )
-
-        return monomer_idx, attachment_idx
-
     def _process_connections(self, connections: list[str]) -> None:
-        """Process connections between chains."""
-        if not connections:
-            return
-
+        """Add the bonds the connection section declares."""
         for connection_str in connections:
             chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = (
                 self._parse_connection(connection_str)
             )
-
-            monomer_idx1, attachment_idx1 = self._resolve_connection_endpoint(
-                chain_id1, residue1, rgroup1 - 1
-            )
-            monomer_idx2, attachment_idx2 = self._resolve_connection_endpoint(
-                chain_id2, residue2, rgroup2 - 1
-            )
-
-            self.bondlist.append([
-                monomer_idx1,
-                attachment_idx1,
-                monomer_idx2,
-                attachment_idx2,
-            ])
-
-            self._mark_used_rgroup(monomer_idx1, rgroup1 - 1)
-            self._mark_used_rgroup(monomer_idx2, rgroup2 - 1)
+            monomer_idx1 = self._resolve_residue(chain_id1, residue1, "connections")
+            monomer_idx2 = self._resolve_residue(chain_id2, residue2, "connections")
+            self._add_bond(monomer_idx1, rgroup1, monomer_idx2, rgroup2, "connections")
 
     def _process_hydrogen_bonds(self, connections: list[str]) -> None:
-        """Process hydrogen bonds."""
-        if not connections:
-            return
-
+        """Record the hydrogen bonds; they add no bonds to the molecule."""
         for connection_str in connections:
             parts = connection_str.split(",")
             if len(parts) != 3:
@@ -964,7 +842,7 @@ class Molecule:
                 )
             chain_id1, chain_id2, bond_spec = parts
 
-            bond_parts = re.split(r"[-:]", bond_spec)
+            bond_parts = self._bond_spec_re.split(bond_spec)
             if len(bond_parts) != 4:
                 raise ValueError(
                     f"Invalid hydrogen bond format: {bond_spec}. Check HELM."
@@ -975,6 +853,45 @@ class Molecule:
             self._resolve_residue(chain_id1, residue1, "hydrogen bonds")
             self._resolve_residue(chain_id2, residue2, "hydrogen bonds")
             self.hydrogen_bonds.append([chain_id1, residue1, chain_id2, residue2])
+
+    @staticmethod
+    def _attachment_point(
+        monomer: MonomerData, rgroup: int, position: int, context: str
+    ) -> int:
+        """Look up the atom a monomer's 0-based R-group bonds through.
+
+        The R-group number is checked against the monomer rather than used as a
+        list index: a monomer that declares fewer R-groups than the bond needs
+        would otherwise come back as a bare IndexError.
+        """
+        attachment_points = monomer["m_attachmentPointIdx"]
+        attachment = (
+            attachment_points[rgroup] if 0 <= rgroup < len(attachment_points) else None
+        )
+        if attachment is None:
+            raise ValueError(
+                f"R-group {rgroup + 1} is not present in monomer {position} ({monomer['m_abbr']}). Check {context}."
+            )
+        return attachment
+
+    def _add_bond(
+        self,
+        monomer_idx1: int,
+        rgroup1: int,
+        monomer_idx2: int,
+        rgroup2: int,
+        context: str,
+    ) -> None:
+        """Bond two monomers through their 0-based R-groups."""
+        atom1 = self._attachment_point(
+            self.monomers[monomer_idx1], rgroup1, monomer_idx1 + 1, context
+        )
+        atom2 = self._attachment_point(
+            self.monomers[monomer_idx2], rgroup2, monomer_idx2 + 1, context
+        )
+        self.bondlist.append([monomer_idx1, atom1, monomer_idx2, atom2])
+        self._mark_used_rgroup(monomer_idx1, rgroup1)
+        self._mark_used_rgroup(monomer_idx2, rgroup2)
 
     def _mark_used_rgroup(self, monomer_idx: int, rgroup: int) -> None:
         """Claim an R-group for a bond, refusing one that is already spent.
@@ -991,57 +908,25 @@ class Molecule:
         self.used_rgroups.add((monomer_idx, rgroup))
         monomer["m_Rgroups"][rgroup] = None
 
-    def _build_molecule(self) -> None:
+    # Building
+
+    def _build_molecule(self) -> Chem.Mol:
         """Build the RDKit molecule from parsed monomer and bond data."""
-        if not self.monomers:
-            self._mol = Chem.RWMol()
-            return
-
-        monomer = self.monomers[0]
-        self._mol = Chem.RWMol(monomer["m_romol"])
-
-        self._replace_rgroups(0, monomer)
-
-        current_offset = self._mol.GetNumAtoms()
-        self.offset = [0, current_offset]
-
+        mol = Chem.RWMol(self.monomers[0]["m_romol"])
         for monomer in self.monomers[1:]:
-            self._mol.InsertMol(monomer["m_romol"])
+            mol.InsertMol(monomer["m_romol"])
 
-            self._replace_rgroups(current_offset, monomer)
+        sizes = (monomer["m_romol"].GetNumAtoms() for monomer in self.monomers)
+        self.offset = [0, *itertools.accumulate(sizes)]
 
-            atom_count = monomer["m_romol"].GetNumAtoms()
-            current_offset += atom_count
-            self.offset.append(current_offset)
+        for monomer, offset in zip(self.monomers, self.offset):
+            self._replace_rgroups(mol, offset, monomer)
+        self._add_bonds(mol)
+        return self._remove_rgroup_atoms(mol)
 
-        self._add_bonds()
-        self._sanitize()
-
-    def _add_bonds(self) -> None:
-        """Add bonds between monomers based on bond list."""
-        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist:
-            absolute_atom1_idx = self.offset[monomer1_idx] + atom1_idx
-            absolute_atom2_idx = self.offset[monomer2_idx] + atom2_idx
-
-            # RDKit answers both of these with a C++ pre-condition violation,
-            # which tells a caller nothing about which connection is at fault.
-            if absolute_atom1_idx == absolute_atom2_idx:
-                raise ValueError(
-                    f"Monomer {monomer1_idx + 1} is bonded to itself through one atom. Check connections."
-                )
-            if (
-                self.mol.GetBondBetweenAtoms(absolute_atom1_idx, absolute_atom2_idx)
-                is not None
-            ):
-                raise ValueError(
-                    f"Duplicate bond between monomer {monomer1_idx + 1} and monomer {monomer2_idx + 1}. Check connections."
-                )
-
-            self.mol.AddBond(
-                absolute_atom1_idx, absolute_atom2_idx, Chem.BondType.SINGLE
-            )
-
-    def _replace_rgroups(self, atom_offset: int, monomer: MonomerData) -> None:
+    def _replace_rgroups(
+        self, mol: Chem.RWMol, atom_offset: int, monomer: MonomerData
+    ) -> None:
         """Cap every R-group of a monomer that no bond has claimed."""
         for rgroup, (cap, atom_idx) in enumerate(
             zip(monomer["m_Rgroups"], monomer["m_RgroupIdx"]), start=1
@@ -1052,31 +937,59 @@ class Molecule:
                 raise ValueError(
                     f"R-group {rgroup} of monomer {monomer['m_abbr']} has the cap group {cap} but no atom index."
                 )
-            self._replace_rgroup(atom_offset, atom_idx, cap)
+            self._replace_rgroup(mol, atom_offset + atom_idx, cap)
 
-    def _replace_rgroup(self, atom_offset: int, atom_idx: int, atom_type: str) -> None:
+    @staticmethod
+    def _replace_rgroup(mol: Chem.RWMol, atom_idx: int, cap: str) -> None:
         """Replace an unused R-group with the heavy atom of its cap group."""
         # A hydrogen cap needs no atom of its own: the dummy is dropped while
         # sanitizing and RDKit fills the free valence with an implicit hydrogen.
-        if atom_type == "H":
+        if cap == "H":
             return
 
         # Leaving the cap group off would delete the dummy atom along with the
         # used R-groups and hand back a molecule that is quietly missing an atom.
-        atomic_number = _cap_group_atomic_number(atom_type)
+        atomic_number = _cap_group_atomic_number(cap)
         if atomic_number is None:
-            raise ValueError(
-                f"Unsupported R-group cap group {atom_type}. Check monomers."
-            )
+            raise ValueError(f"Unsupported R-group cap group {cap}. Check monomers.")
 
         try:
-            self.mol.ReplaceAtom(atom_offset + atom_idx, Chem.Atom(atomic_number))
+            mol.ReplaceAtom(atom_idx, Chem.Atom(atomic_number))
         except (RuntimeError, OverflowError) as e:
             raise ValueError(
-                f"Failed to replace R-group with {atom_type}: {e}. Check monomers."
+                f"Failed to replace R-group with {cap}: {e}. Check monomers."
             ) from e
 
-    def _move_stereo_references(self, deleted: set[int]) -> None:
+    def _bond_atoms(self) -> Iterator[tuple[int, int, int, int]]:
+        """Yield each bond in the bond list as (monomer1, atom1, monomer2, atom2).
+
+        The atom indices are absolute, in the molecule as the offsets describe it.
+        """
+        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist:
+            yield (
+                monomer1_idx,
+                self.offset[monomer1_idx] + atom1_idx,
+                monomer2_idx,
+                self.offset[monomer2_idx] + atom2_idx,
+            )
+
+    def _add_bonds(self, mol: Chem.RWMol) -> None:
+        """Add bonds between monomers based on bond list."""
+        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self._bond_atoms():
+            # RDKit answers both of these with a C++ pre-condition violation,
+            # which tells a caller nothing about which connection is at fault.
+            if atom1_idx == atom2_idx:
+                raise ValueError(
+                    f"Monomer {monomer1_idx + 1} is bonded to itself through one atom. Check connections."
+                )
+            if mol.GetBondBetweenAtoms(atom1_idx, atom2_idx) is not None:
+                raise ValueError(
+                    f"Duplicate bond between monomer {monomer1_idx + 1} and monomer {monomer2_idx + 1}. Check connections."
+                )
+
+            mol.AddBond(atom1_idx, atom2_idx, Chem.BondType.SINGLE)
+
+    def _move_stereo_references(self, mol: Chem.RWMol, deleted: set[int]) -> None:
         """Move double bond stereo references off the atoms about to be deleted.
 
         RDKit drops a reference that no longer exists, and a double bond with no
@@ -1085,14 +998,25 @@ class Molecule:
         takes the reference over unchanged; any other surviving neighbour is on
         the opposite side of the double bond and flips the parity.
         """
+        # A stereo reference is a neighbour of the double bond, so only a double
+        # bond next to a deleted atom can lose one. Finding those by
+        # substructure search is far quicker than walking every bond.
+        matches = mol.GetSubstructMatches(
+            _DUMMY_BY_DOUBLE_BOND, uniquify=False, maxMatches=_ALL_MATCHES
+        )
+        candidates = sorted({
+            mol.GetBondBetweenAtoms(end, other_end).GetIdx()
+            for _, end, other_end in matches
+        })
+        if not candidates:
+            return
+
         bonded: defaultdict[int, set[int]] = defaultdict(set)
-        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist:
-            first = self.offset[monomer1_idx] + atom1_idx
-            second = self.offset[monomer2_idx] + atom2_idx
+        for _, first, _, second in self._bond_atoms():
             bonded[first].add(second)
             bonded[second].add(first)
 
-        for bond in self.mol.GetBonds():
+        for bond in map(mol.GetBondWithIdx, candidates):
             if bond.GetStereo() not in _FLIPPED_STEREO:
                 continue
             references = list(bond.GetStereoAtoms())
@@ -1108,15 +1032,14 @@ class Molecule:
                     moved.append(reference)
                     continue
                 end = next(
-                    (e for e in ends if self.mol.GetBondBetweenAtoms(e, reference)),
-                    None,
+                    (e for e in ends if mol.GetBondBetweenAtoms(e, reference)), None
                 )
                 if end is None:
                     break
                 other_end = ends[1] if end == ends[0] else ends[0]
                 candidates = [
                     neighbour.GetIdx()
-                    for neighbour in self.mol.GetAtomWithIdx(end).GetNeighbors()
+                    for neighbour in mol.GetAtomWithIdx(end).GetNeighbors()
                     if neighbour.GetIdx() not in deleted
                     and neighbour.GetIdx() != other_end
                 ]
@@ -1136,47 +1059,45 @@ class Molecule:
             if flip:
                 bond.SetStereo(_FLIPPED_STEREO[bond.GetStereo()])
 
-    def _sanitize(self) -> None:
-        """Clean up the molecule by removing dummy atoms."""
-        atoms_to_delete = _dummy_atoms(self.mol)
-        self._move_stereo_references(set(atoms_to_delete))
-        _delete_atoms(self.mol, atoms_to_delete)
-        self._mol = self.mol.GetMol()
+    def _remove_rgroup_atoms(self, mol: Chem.RWMol) -> Chem.Mol:
+        """Delete the R-group atoms left over and renumber the bond list to match."""
+        rgroup_atoms = _dummy_atoms(mol)
+        self._move_stereo_references(mol, set(rgroup_atoms))
+        _delete_atoms(mol, rgroup_atoms)
 
-        def correction(offset: int, idx: int) -> int:
-            return bisect.bisect_left(atoms_to_delete, idx) - bisect.bisect_left(
-                atoms_to_delete, offset
-            )
+        def shifted(idx: int) -> int:
+            """Where an atom that was not deleted ends up."""
+            return idx - bisect.bisect_left(rgroup_atoms, idx)
 
-        for i, (m1, a1, m2, a2) in enumerate(self.bondlist):
-            offset1 = self.offset[m1]
-            offset2 = self.offset[m2]
-            self.bondlist[i][1] -= correction(offset1, offset1 + a1)
-            self.bondlist[i][3] -= correction(offset2, offset2 + a2)
+        for bond in self.bondlist:
+            monomer1_idx, atom1_idx, monomer2_idx, atom2_idx = bond
+            offset1, offset2 = self.offset[monomer1_idx], self.offset[monomer2_idx]
+            bond[1] = shifted(offset1 + atom1_idx) - shifted(offset1)
+            bond[3] = shifted(offset2 + atom2_idx) - shifted(offset2)
+        self.offset = [shifted(offset) for offset in self.offset]
 
-        self.offset = [
-            offset - sum(d < offset for d in atoms_to_delete) for offset in self.offset
-        ]
+        result = mol.GetMol()
 
         # Ring membership is not worked out by any of the above, and RDKit
         # answers a ring query on a molecule without it by raising, which takes
         # out ring descriptors and every SMARTS match that mentions a ring.
-        Chem.FastFindRings(self._mol)
+        Chem.FastFindRings(result)
 
         # Stereo is carried on the double bond, but writing SMILES needs the
         # direction of the single bonds around it, which nothing above sets. A
         # molecule would report its geometry through InChI and lose it through
         # SMILES.
-        Chem.SetDoubleBondNeighborDirections(self._mol)
+        Chem.SetDoubleBondNeighborDirections(result)
+        return result
+
+    # Results
 
     @property
     def bond_indices(self) -> list[int]:
+        """The index in `mol` of each bond in the bond list."""
         indices = []
-        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self.bondlist:
-            bond = self.mol.GetBondBetweenAtoms(
-                self.offset[monomer1_idx] + atom1_idx,
-                self.offset[monomer2_idx] + atom2_idx,
-            )
+        for monomer1_idx, atom1_idx, monomer2_idx, atom2_idx in self._bond_atoms():
+            bond = self.mol.GetBondBetweenAtoms(atom1_idx, atom2_idx)
             if bond is None:
                 raise ValueError(
                     f"The bond between monomer {monomer1_idx + 1} and monomer {monomer2_idx + 1} is not present in the molecule."
@@ -1186,6 +1107,7 @@ class Molecule:
 
     @property
     def monomer_indices(self) -> list[int]:
+        """The index of the monomer each atom of `mol` comes from."""
         return [
             bisect.bisect_right(self.offset, i) - 1
             for i in range(self.mol.GetNumAtoms())
@@ -1195,7 +1117,7 @@ class Molecule:
 _monomer_df: MonomerLibrary | None = None
 
 
-def _init_pool(monomer_df: MonomerLibrary):
+def _init_pool(monomer_df: MonomerLibrary) -> None:
     global _monomer_df
     _monomer_df = monomer_df
 
@@ -1205,10 +1127,11 @@ def _load_helm(helm: str) -> Molecule:
 
 
 def load_in_parallel(
-    helms: list[str],
+    helms: Iterable[str],
     monomer_df: MonomerLibrary | None = None,
     chunksize: int | None = 256,
 ) -> list[Molecule]:
+    """Build a Molecule for each HELM string using a pool of worker processes."""
     if monomer_df is None:
         monomer_df = load_monomer_library()
     with multiprocessing.Pool(initializer=_init_pool, initargs=(monomer_df,)) as pool:
