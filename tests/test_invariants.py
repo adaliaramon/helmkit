@@ -5,6 +5,7 @@ import pytest
 from helmkit import Molecule
 from rdkit import Chem
 from rdkit import rdBase
+from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 
 # Generated HELM strings, close enough to valid to reach the parts of the parser
 # that hand-written cases do not. Whatever goes in, helmkit has to either build
@@ -123,6 +124,17 @@ def check_invariants(molecule):
     assert Chem.MolFromSmiles(Chem.MolToSmiles(molecule.mol)) is not None, (
         "cannot be read back from its own SMILES"
     )
+
+
+def test_a_polymer_with_more_than_a_thousand_rgroups_loses_every_one():
+    """R-group atoms past the first thousand used to be left in the molecule.
+
+    They were found by substructure search, which stops at 1000 matches.
+    """
+    molecule = Molecule("PEPTIDE1{" + ".".join(["G"] * 600) + "}$$$$")
+
+    assert CalcMolFormula(molecule.mol) == "C1200H1802N600O601"
+    check_invariants(molecule)
 
 
 @pytest.mark.parametrize("seed", range(4))

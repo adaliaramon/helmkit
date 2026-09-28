@@ -53,6 +53,16 @@ def test_trailing_separator_is_rejected():
         Molecule("PEPTIDE1{A.G.}$$$$")
 
 
+@pytest.mark.parametrize(
+    "helm",
+    ["RNA1{R(A)P..R(C)}$$$$", "RNA1{R(A)P.}$$$$", "RNA1{.R(A)}$$$$", "RNA1{.}$$$$"],
+)
+def test_an_empty_rna_residue_is_rejected(helm):
+    """An empty RNA residue used to drop out of the chain, or leave no molecule."""
+    with pytest.raises(ValueError, match="has no name"):
+        Molecule(helm)
+
+
 @pytest.mark.parametrize("sequence", ["A]G", "A[G", "R(AP", "RA)P"])
 def test_unbalanced_brackets_are_rejected(sequence):
     with pytest.raises(ValueError, match="Unbalanced brackets"):

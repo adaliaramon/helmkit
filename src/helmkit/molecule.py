@@ -29,6 +29,33 @@ _FLIPPED_STEREO = {
 }
 
 
+_DUMMY = Chem.MolFromSmarts("[#0]")
+
+# `GetSubstructMatches` stops at 1000 matches unless told otherwise, which
+# would miss atoms in a long polymer.
+_ALL_MATCHES = 2**32 - 1
+
+
+def _dummy_atoms(molecule: Chem.Mol) -> list[int]:
+    """Return the indices of every dummy atom, in ascending order."""
+    matches = molecule.GetSubstructMatches(_DUMMY, maxMatches=_ALL_MATCHES)
+    return sorted(idx for (idx,) in matches)
+
+
+def _delete_atoms(molecule: Chem.RWMol, indices: Iterable[int]) -> None:
+    """Delete atoms in place, the way `Chem.DeleteSubstructs` does.
+
+    `Chem.DeleteSubstructs` itself cannot be used: it stops at the first 1000
+    matches like any other substructure search.
+    """
+    molecule.BeginBatchEdit()
+    for idx in indices:
+        molecule.RemoveAtom(idx)
+    molecule.CommitBatchEdit()
+    molecule.ClearComputedProps()
+    molecule.UpdatePropertyCache(strict=False)
+
+
 def get_molecule_property(
     molecule: Chem.Mol, property_name: str, default: str | None = None
 ) -> str | None:
@@ -149,7 +176,8 @@ def validate_monomer_core(name: str, molecule: Chem.Mol) -> None:
     R-groups disappears out of the molecule, and one whose R-group sits between
     two halves falls into two pieces. Neither says anything at the time.
     """
-    core = Chem.DeleteSubstructs(Chem.Mol(molecule), Chem.MolFromSmarts("[#0]"))
+    core = Chem.RWMol(molecule)
+    _delete_atoms(core, _dummy_atoms(core))
     if core.GetNumAtoms() == 0:
         raise ValueError(f"Monomer {name} has no atoms besides its R-groups.")
     if len(Chem.GetMolFrags(core)) > 1:
@@ -745,6 +773,10 @@ class Molecule:
                 prev_monomer = None
                 for residue_idx, residue in enumerate(residues):
                     split_residue = self._parse_rna_string(residue)
+                    if not split_residue:
+                        raise ValueError(
+                            f"Monomer {residue_idx + 1} has no name. Check HELM."
+                        )
                     for subresidue in split_residue:
                         is_base = subresidue.startswith("(") and subresidue.endswith(
                             ")"
@@ -1106,11 +1138,10 @@ class Molecule:
 
     def _sanitize(self) -> None:
         """Clean up the molecule by removing dummy atoms."""
-        pattern = Chem.MolFromSmarts("[#0]")
-        matches = self.mol.GetSubstructMatches(pattern)
-        atoms_to_delete = sorted({idx for match in matches for idx in match})
+        atoms_to_delete = _dummy_atoms(self.mol)
         self._move_stereo_references(set(atoms_to_delete))
-        self._mol = Chem.DeleteSubstructs(self._mol, pattern)
+        _delete_atoms(self.mol, atoms_to_delete)
+        self._mol = self.mol.GetMol()
 
         def correction(offset: int, idx: int) -> int:
             return bisect.bisect_left(atoms_to_delete, idx) - bisect.bisect_left(
