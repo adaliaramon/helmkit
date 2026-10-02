@@ -125,11 +125,47 @@ def test_a_bond_from_an_atom_back_to_itself_is_rejected():
         "PEPTIDE1,PEPTIDE1,1:pair",
         "PEPTIDE1,PEPTIDE9,1:pair-2:pair",
         "PEPTIDE1,PEPTIDE1,1:pair-9:pair",
+        "PEPTIDE1,PEPTIDE1,1:R2-2:R1",
+        "PEPTIDE1,PEPTIDE1,1:pair-2:R1",
     ],
 )
 def test_a_malformed_hydrogen_bond_is_rejected(hydrogen_bond):
     with pytest.raises(ValueError):
         Molecule(f"PEPTIDE1{{A.G}}$${hydrogen_bond}$$")
+
+
+@pytest.mark.parametrize(
+    "hydrogen_bond",
+    [
+        "PEPTIDE1,PEPTIDE1,x:pair-2:pair",
+        "PEPTIDE1,PEPTIDE9,1:pair-2:pair",
+        "PEPTIDE1,PEPTIDE1,1:pair-9:pair",
+        "PEPTIDE1,PEPTIDE1,1:pair-2:R1",
+        "PEPTIDE1,PEPTIDE1,1:R2-2:pair",
+    ],
+)
+def test_a_malformed_hydrogen_bond_among_the_connections_is_rejected(hydrogen_bond):
+    """HELM2 writes hydrogen bonds in the connection section."""
+    with pytest.raises(ValueError):
+        Molecule(f"PEPTIDE1{{A.G}}${hydrogen_bond}$$$")
+
+
+def test_a_hydrogen_bond_among_the_connections_is_recorded_not_bonded():
+    paired = Molecule("RNA1{R(A)}|RNA2{R(U)}$RNA1,RNA2,2:pair-2:pair$$$V2.0")
+    unpaired = Molecule("RNA1{R(A)}|RNA2{R(U)}$$$$V2.0")
+
+    assert paired.hydrogen_bonds == [["RNA1", 1, "RNA2", 1]]
+    assert paired.bondlist == unpaired.bondlist
+    assert Chem.MolToSmiles(paired.mol) == Chem.MolToSmiles(unpaired.mol)
+
+
+def test_hydrogen_bonds_and_covalent_bonds_mix_in_the_connection_section():
+    molecule = Molecule(
+        "RNA1{R(A)P}|RNA2{R(U)P}$RNA1,RNA2,2:pair-2:pair|RNA1,RNA2,3:R2-1:R1$$$V2.0"
+    )
+
+    assert molecule.hydrogen_bonds == [["RNA1", 1, "RNA2", 1]]
+    assert len(molecule.bond_indices) == 5
 
 
 def test_a_valid_hydrogen_bond_is_still_recorded():

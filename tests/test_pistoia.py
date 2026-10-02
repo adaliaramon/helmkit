@@ -191,12 +191,6 @@ def test_hydrogen_bonds_in_their_own_section_leave_the_formula_alone():
     assert len(molecule.hydrogen_bonds) == 25
 
 
-@pytest.mark.xfail(
-    raises=ValueError,
-    strict=True,
-    reason="HELM2 writes base pairs in the connection section, which only "
-    "accepts R-groups",
-)
 def test_hydrogen_bonds_in_the_connection_section_leave_the_formula_alone():
     """MoleculePropertyCalculatorTest writes the duplex the HELM2 way."""
     molecule = Molecule(f"{DUPLEX_STRANDS}${DUPLEX_PAIRS}$$$V2.0")

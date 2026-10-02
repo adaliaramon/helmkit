@@ -899,8 +899,15 @@ class Molecule:
         return residues[residue]
 
     def _process_connections(self, connections: list[str]) -> None:
-        """Add the bonds the connection section declares."""
+        """Add the bonds the connection section declares.
+
+        HELM2 writes hydrogen bonds here too, as ``pair`` in place of both
+        R-groups; they are recorded rather than bonded.
+        """
         for connection_str in connections:
+            if self._is_hydrogen_bond(connection_str):
+                self._add_hydrogen_bond(connection_str)
+                continue
             chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = (
                 self._parse_connection(connection_str)
             )
@@ -908,27 +915,42 @@ class Molecule:
             monomer_idx2 = self._resolve_residue(chain_id2, residue2, "connections")
             self._add_bond(monomer_idx1, rgroup1, monomer_idx2, rgroup2, "connections")
 
+    @staticmethod
+    def _is_hydrogen_bond(connection_str: str) -> bool:
+        """Does a connection name ``pair`` in place of an R-group?"""
+        bond_spec = connection_str.rsplit(",", 1)[-1]
+        bond_parts = Molecule._bond_spec_re.split(bond_spec)
+        return len(bond_parts) == 4 and "pair" in (bond_parts[1], bond_parts[3])
+
     def _process_hydrogen_bonds(self, connections: list[str]) -> None:
-        """Record the hydrogen bonds; they add no bonds to the molecule."""
+        """Record the hydrogen bonds of HELM1's own section for them."""
         for connection_str in connections:
-            parts = connection_str.split(",")
-            if len(parts) != 3:
-                raise ValueError(
-                    f"Invalid hydrogen bond format: {connection_str}. Check HELM."
-                )
-            chain_id1, chain_id2, bond_spec = parts
+            self._add_hydrogen_bond(connection_str)
 
-            bond_parts = self._bond_spec_re.split(bond_spec)
-            if len(bond_parts) != 4:
-                raise ValueError(
-                    f"Invalid hydrogen bond format: {bond_spec}. Check HELM."
-                )
+    def _add_hydrogen_bond(self, connection_str: str) -> None:
+        """Record a hydrogen bond; it adds no bond to the molecule."""
+        parts = connection_str.split(",")
+        if len(parts) != 3:
+            raise ValueError(
+                f"Invalid hydrogen bond format: {connection_str}. Check HELM."
+            )
+        chain_id1, chain_id2, bond_spec = parts
 
-            residue1 = self._parse_residue_number(bond_parts[0], bond_spec)
-            residue2 = self._parse_residue_number(bond_parts[2], bond_spec)
-            self._resolve_residue(chain_id1, residue1, "hydrogen bonds")
-            self._resolve_residue(chain_id2, residue2, "hydrogen bonds")
-            self.hydrogen_bonds.append([chain_id1, residue1, chain_id2, residue2])
+        bond_parts = self._bond_spec_re.split(bond_spec)
+        if len(bond_parts) != 4:
+            raise ValueError(f"Invalid hydrogen bond format: {bond_spec}. Check HELM.")
+        # Anything else would be a covalent bond written where only hydrogen
+        # bonds go, and recording it as one would quietly leave the bond out.
+        if bond_parts[1] != "pair" or bond_parts[3] != "pair":
+            raise ValueError(
+                f"Hydrogen bond {bond_spec} has to name pair at both ends. Check HELM."
+            )
+
+        residue1 = self._parse_residue_number(bond_parts[0], bond_spec)
+        residue2 = self._parse_residue_number(bond_parts[2], bond_spec)
+        self._resolve_residue(chain_id1, residue1, "hydrogen bonds")
+        self._resolve_residue(chain_id2, residue2, "hydrogen bonds")
+        self.hydrogen_bonds.append([chain_id1, residue1, chain_id2, residue2])
 
     @staticmethod
     def _attachment_point(
