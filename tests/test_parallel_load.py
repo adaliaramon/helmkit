@@ -24,5 +24,15 @@ def test():
         assert inchi1 == inchi2
 
 
+def test_molecules_share_the_callers_library():
+    # Workers do not send the library back with their results, so every
+    # molecule has to be handed the caller's own one again rather than a copy.
+    monomer_db = load_monomer_library()
+    molecules = load_in_parallel(
+        ["PEPTIDE1{A.G}$$$$", "PEPTIDE1{L}$$$$"], monomer_db, chunksize=1
+    )
+    assert all(m.monomer_df is monomer_db for m in molecules)
+
+
 if __name__ == "__main__":
     test()

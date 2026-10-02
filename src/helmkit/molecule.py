@@ -46,7 +46,9 @@ _CARBOXYLIC_ACID = Chem.MolFromSmarts("[CX3](=O)[OH]")
 _BACKBONE_CARBONYL = Chem.MolFromSmarts("[#7][CX4][CX3]=O")
 _DUMMY = Chem.MolFromSmarts("[#0]")
 # A dummy atom bonded to one end of a double bond, as (dummy, end, other end).
-_DUMMY_BY_DOUBLE_BOND = Chem.MolFromSmarts("[#0]~*=*")
+# The other end needs a neighbour of its own for the bond to have E/Z geometry,
+# which leaves out the carbonyl next to every R2.
+_DUMMY_BY_DOUBLE_BOND = Chem.MolFromSmarts("[#0]~*=[!D1]")
 
 # `GetSubstructMatches` stops at 1000 matches unless told otherwise, which
 # would miss atoms in a long polymer.
@@ -1088,7 +1090,9 @@ class Molecule:
         # Ring membership is not worked out by any of the above, and RDKit
         # answers a ring query on a molecule without it by raising, which takes
         # out ring descriptors and every SMARTS match that mentions a ring.
-        Chem.FastFindRings(result)
+        # SetDoubleBondNeighborDirections works out the symmetrized SSSR itself
+        # when it is missing, so asking for that here costs nothing extra.
+        Chem.GetSymmSSSR(result)
 
         # Stereo is carried on the double bond, but writing SMILES needs the
         # direction of the single bonds around it, which nothing above sets. A
@@ -1130,7 +1134,11 @@ def _init_pool(monomer_df: MonomerLibrary) -> None:
 
 
 def _load_helm(helm: str) -> Molecule:
-    return Molecule(helm, _monomer_df)
+    molecule = Molecule(helm, _monomer_df)
+    # The library is only needed while parsing and the parent already has it,
+    # so it is not pickled back with every chunk of results.
+    del molecule.monomer_df
+    return molecule
 
 
 def load_in_parallel(
@@ -1142,4 +1150,7 @@ def load_in_parallel(
     if monomer_df is None:
         monomer_df = load_monomer_library()
     with multiprocessing.Pool(initializer=_init_pool, initargs=(monomer_df,)) as pool:
-        return pool.map(_load_helm, helms, chunksize=chunksize)
+        molecules = pool.map(_load_helm, helms, chunksize=chunksize)
+    for molecule in molecules:
+        molecule.monomer_df = monomer_df
+    return molecules

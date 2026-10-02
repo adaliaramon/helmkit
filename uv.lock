@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -248,7 +248,7 @@ wheels = [
 
 [[package]]
 name = "helmkit"
-version = "0.7.12"
+version = "0.7.13"
 source = { editable = "." }
 dependencies = [
     { name = "rdkit" },
