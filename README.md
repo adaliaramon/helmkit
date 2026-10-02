@@ -120,7 +120,10 @@ print(edges)  # [(0, 1), (1, 2), (2, 3), (1, 3)]
 
 Removing the bonds in `bond_indices`, for instance with
 `Chem.FragmentOnBonds(mol, molecule.bond_indices)`, splits the molecule into
-one fragment per monomer, unless a connection bonds a monomer to itself.
+one fragment per monomer, unless a connection bonds a monomer to itself or a
+monomer is a salt: a counter-ion, such as the sodium of
+`[Na+].[O-]P([*])([*])=O`, is a fragment of its own but still belongs to its
+monomer in `monomer_indices`.
 
 ## Using Custom Monomer Data
 

@@ -121,11 +121,6 @@ def test_an_inline_alanine_is_alanine():
     assert Chem.MolToSmiles(inline.mol) == Chem.MolToSmiles(library.mol)
 
 
-@pytest.mark.xfail(
-    raises=ValueError,
-    strict=True,
-    reason="a counter-ion is rejected as a monomer that falls into fragments",
-)
 @pytest.mark.parametrize(
     "helm",
     [

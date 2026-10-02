@@ -189,14 +189,37 @@ def validate_monomer_core(name: str, molecule: Chem.Mol) -> None:
     Every dummy atom is deleted while sanitizing, so a monomer made only of
     R-groups disappears out of the molecule, and one whose R-group sits between
     two halves falls into two pieces. Neither says anything at the time.
+
+    A salt may carry its counter-ion as a fragment of its own, such as the
+    sodium of ``[Na+].[O-]P(*)(*)=O``. Only a charged fragment with no R-group
+    can stand apart that way: anything else is a second piece of the monomer
+    that no bond would ever join to the rest.
     """
     core = Chem.RWMol(molecule)
-    _delete_atoms(core, _dummy_atoms(core))
+    dummies = _dummy_atoms(core)
+    _delete_atoms(core, dummies)
     if core.GetNumAtoms() == 0:
         raise ValueError(f"Monomer {name} has no atoms besides its R-groups.")
-    if len(Chem.GetMolFrags(core)) > 1:
+
+    fragments = Chem.GetMolFrags(core)
+    if len(fragments) == 1:
+        return
+
+    # Where each atom bonded to an R-group ended up once the dummies went.
+    carries_rgroup = {
+        neighbour.GetIdx() - bisect.bisect_left(dummies, neighbour.GetIdx())
+        for idx in dummies
+        for neighbour in molecule.GetAtomWithIdx(idx).GetNeighbors()
+        if neighbour.GetAtomicNum() != 0
+    }
+    pieces = 0
+    for fragment in fragments:
+        charge = sum(core.GetAtomWithIdx(idx).GetFormalCharge() for idx in fragment)
+        counter_ion = charge != 0 and carries_rgroup.isdisjoint(fragment)
+        pieces += not counter_ion
+    if pieces > 1:
         raise ValueError(
-            f"Monomer {name} falls into separate fragments once its R-groups are removed."
+            f"Monomer {name} falls into separate fragments once its R-groups are removed, and only a charged counter-ion can stand apart."
         )
 
 
