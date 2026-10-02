@@ -20,16 +20,15 @@ def load(name):
 POSITIVE = load("positive_testcases.txt")
 NEGATIVE = load("negative_testcases.txt")
 
-# Positive cases that describe one concrete molecule which helmkit does not
-# build yet. Every other positive case describes an abstract structure (a BLOB,
-# an unknown monomer such as X, N or *, a ratio or an alternative, a polymer
-# group, a connection to "any C") or a monomer that is not in the library, and
-# helmkit should reject it.
-NOT_YET_BUILT = {
-    2: "monomer repeats such as A'23'",
-    5: "repeats of a group of monomers such as (R(G)P)'15'",
-    25: "monomer repeats such as A'55'",
-}
+# Positive cases that describe one concrete molecule, which helmkit builds.
+# Every other one describes an abstract structure (a BLOB, an unknown monomer
+# such as X, N or *, a ratio or an alternative, a polymer group, a connection to
+# "any C"), a monomer that is not in the library, or chemistry the library
+# cannot carry, and helmkit rejects it.
+#
+# Line 5 repeats a group of nucleotides, (R(G)P.R(U)P.R(G)P)'15', but ends in
+# P(C), a base hung off a phosphate, which has no R3 to hang it from.
+BUILT = {1, 2, 4, 25}
 
 
 def sanitizable(mol):
@@ -52,35 +51,31 @@ def test_notation_the_reference_parser_rejects_is_rejected(line, helm):
 
 @pytest.mark.parametrize(
     ("line", "helm"),
-    [pytest.param(n, h, id=f"line{n}") for n, h in POSITIVE if n not in NOT_YET_BUILT],
+    [pytest.param(n, h, id=f"line{n}") for n, h in POSITIVE if n in BUILT],
 )
-def test_notation_the_reference_parser_accepts_is_built_or_rejected_clearly(line, helm):
-    """An abstract structure has no one molecule, so a ValueError saying why
-    is the right answer; anything else escaping is a crash."""
-    try:
-        molecule = Molecule(helm)
-    except ValueError:
-        return
-    assert sanitizable(molecule.mol)
+def test_a_concrete_molecule_the_reference_parser_accepts_is_built(line, helm):
+    assert sanitizable(Molecule(helm).mol)
 
 
 @pytest.mark.parametrize(
     ("line", "helm"),
-    [
-        pytest.param(
-            n,
-            h,
-            id=f"line{n}",
-            marks=pytest.mark.xfail(
-                raises=ValueError, strict=True, reason=NOT_YET_BUILT[n]
-            ),
-        )
-        for n, h in POSITIVE
-        if n in NOT_YET_BUILT
-    ],
+    [pytest.param(n, h, id=f"line{n}") for n, h in POSITIVE if n not in BUILT],
 )
-def test_a_concrete_molecule_the_reference_parser_accepts_is_built(line, helm):
-    assert sanitizable(Molecule(helm).mol)
+def test_an_abstract_structure_the_reference_parser_accepts_is_rejected(line, helm):
+    """An abstract structure has no one molecule, so a ValueError saying why
+    is the right answer; building something would be quietly wrong."""
+    with pytest.raises(ValueError):
+        Molecule(helm)
+
+
+def test_a_repeated_group_of_nucleotides_from_line_5_is_built():
+    """Line 5 without the P(C) helmkit's phosphate cannot carry."""
+    helm = dict(POSITIVE)[5].replace(".P(C)}", "}")
+    plain = helm.replace(
+        "(R(G)P.R(U)P.R(G)P)'15'", ".".join(["R(G)P.R(U)P.R(G)P"] * 15)
+    )
+
+    assert Chem.MolToSmiles(Molecule(helm).mol) == Chem.MolToSmiles(Molecule(plain).mol)
 
 
 # Chemistry test cases from HELM2NotationToolkit

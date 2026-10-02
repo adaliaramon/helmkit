@@ -762,6 +762,87 @@ class Molecule:
         return text[: text.rfind('"', 0, -1)]
 
     @staticmethod
+    def _expand_residues(residues: list[str], polymer_type: PolymerType) -> list[str]:
+        """Drop annotations and write out repeats, such as ``A'3'``.
+
+        A repeat applies to one residue, or to a group of them in parentheses
+        such as ``(A.G)'3'``. Connections count residues once repeats are
+        written out, the way HELM2 numbers them.
+        """
+        expanded: list[str] = []
+        for residue in residues:
+            residue = Molecule._strip_annotation(residue)
+            count = 1
+            if residue.endswith("'"):
+                residue, count = Molecule._parse_repeat(residue)
+
+            group = Molecule._group_content(residue)
+            if group is None:
+                # Whether R(A)P'2' repeats the nucleotide or only its phosphate
+                # is not settled, so only a single monomer is repeated this way.
+                if (
+                    count > 1
+                    and polymer_type == "RNA"
+                    and len(Molecule._parse_rna_string(residue)) > 1
+                ):
+                    raise ValueError(
+                        f"Residue {residue}'{count}' repeats more than one monomer; write it as a group, ({residue})'{count}'. Check HELM."
+                    )
+                expanded.extend([residue] * count)
+            else:
+                members = Molecule._split_sequence_with_brackets(group)
+                expanded.extend(
+                    Molecule._expand_residues(members, polymer_type) * count
+                )
+        return expanded
+
+    @staticmethod
+    def _parse_repeat(residue: str) -> tuple[str, int]:
+        """Split a residue such as ``A'3'`` into what is repeated and how often."""
+        start = residue.rfind("'", 0, -1)
+        if start < 0:
+            raise ValueError(f"Residue {residue} has a stray quote. Check HELM.")
+        if start == 0:
+            raise ValueError(f"Residue {residue} repeats nothing. Check HELM.")
+        repeated, count = residue[:start], residue[start + 1 : -1]
+        if not count.isdecimal():
+            if "-" in count:
+                raise ValueError(
+                    f"Residue {residue} repeats a range of times, which describes more than one molecule."
+                )
+            raise ValueError(
+                f"Residue {residue} has a repeat count {count} that is not a number. Check HELM."
+            )
+        if int(count) < 1:
+            raise ValueError(
+                f"Residue {residue} is repeated {count} times; a repeat is at least once. Check HELM."
+            )
+        return repeated, int(count)
+
+    @staticmethod
+    def _group_content(residue: str) -> str | None:
+        """The residues inside a group in parentheses, such as ``(A.G)``.
+
+        Parentheses also hold alternatives and ratios, such as ``(A,G)`` and
+        ``(A:1+G:2)``, which are not one sequence; those are left alone. So is
+        a residue whose parentheses close before its end, such as an RNA
+        residue that starts with its base.
+        """
+        if not (residue.startswith("(") and residue.endswith(")")):
+            return None
+        depth = 0
+        for i, char in enumerate(residue):
+            if char in "[(":
+                depth += 1
+            elif char in "])":
+                depth -= 1
+                if depth == 0 and i < len(residue) - 1:
+                    return None
+            elif depth == 1 and char in ",+:":
+                return None
+        return residue[1:-1]
+
+    @staticmethod
     def _extract_polymer_type(chain_id: str) -> PolymerType:
         """Return the polymer type of a chain ID such as ``PEPTIDE1``."""
         match = Molecule._chain_id_re.fullmatch(chain_id)
@@ -804,8 +885,15 @@ class Molecule:
                 )
 
             residues = self._split_sequence_with_brackets(sequence)
-            if '"' in sequence:
-                residues = [self._strip_annotation(r) for r in residues]
+            # Only an annotation, a repeat or a group needs any more work, and a
+            # group opens a residue: an RNA base in parentheses never does.
+            if (
+                '"' in sequence
+                or "'" in sequence
+                or sequence.startswith("(")
+                or ".(" in sequence
+            ):
+                residues = self._expand_residues(residues, polymer_type)
             self.chain_offset[chain_id] = len(self.monomers)
 
             if polymer_type == "PEPTIDE":
