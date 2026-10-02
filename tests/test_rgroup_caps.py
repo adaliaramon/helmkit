@@ -143,3 +143,39 @@ def test_a_bonded_rgroup_on_a_bracket_atom_gains_no_hydrogen():
     mol = Molecule("PEPTIDE1{G.[*[NH][C@@H](C)C(=O)* |$_R1;;;;;;_R2$|]}$$$$").mol
 
     assert Chem.MolToSmiles(mol) == canonical("NCC(=O)N[C@@H](C)C(=O)O")
+
+
+def _bases():
+    library = load_monomer_library()
+    return sorted(
+        symbol
+        for symbol, monomer in library["rna"].items()
+        if monomer["m_Rgroups"][0] in (None, "H")
+        and monomer["m_attachmentPointIdx"][0] is not None
+        and monomer["m_romol"]
+        .GetAtomWithIdx(monomer["m_attachmentPointIdx"][0])
+        .GetIsAromatic()
+    )
+
+
+@pytest.mark.parametrize("symbol", _bases())
+def test_a_base_on_its_own_takes_the_hydrogen_of_its_unused_rgroup(symbol):
+    """RDKit gives an aromatic nitrogen no implicit hydrogen, so a base whose
+    R1 went unused came back as a ring that could not even be kekulized."""
+    monomer = load_monomer_library()["rna"][symbol]["m_romol"]
+    reference = Chem.ReplaceSubstructs(
+        monomer, Chem.MolFromSmarts("[#0]"), Chem.MolFromSmiles("[H]"), replaceAll=True
+    )[0]
+    reference = Chem.RemoveHs(reference)
+
+    mol = Molecule(f"RNA1{{[{symbol}]}}$$$$").mol
+
+    Chem.SanitizeMol(Chem.Mol(mol))
+    assert CalcMolFormula(mol) == CalcMolFormula(reference)
+    assert Chem.MolToInchi(mol) == Chem.MolToInchi(reference)
+
+
+def test_an_unused_rgroup_on_an_aromatic_nitrogen_of_an_inline_monomer():
+    mol = Molecule("CHEM1{[[*]n1ccnc1 |$_R1;;;;;$|]}$$$$").mol
+
+    assert Chem.MolToSmiles(mol) == canonical("c1c[nH]cn1")

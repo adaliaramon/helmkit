@@ -539,6 +539,10 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         ):
             caps[1] = "OH"
 
+    # Inferring an R-group adds or replaces atoms, which leaves the hydrogen
+    # counts RDKit keeps for the atoms around it out of date.
+    mol.UpdatePropertyCache(strict=False)
+
     mol.SetProp("symbol", monomer_name)
     mol.SetProp("m_abbr", monomer_name)
     mol.SetProp("m_type", m_type)
@@ -1213,15 +1217,27 @@ class Molecule:
         sizes = (monomer["m_romol"].GetNumAtoms() for monomer in self.monomers)
         self.offset = [0, *itertools.accumulate(sizes)]
 
+        # The hydrogens each atom capped with hydrogen should end up with.
+        hydrogens: dict[int, int] = {}
         for monomer_idx, offset in enumerate(self.offset[:-1]):
-            self._replace_rgroups(mol, offset, monomer_idx)
+            self._replace_rgroups(mol, offset, monomer_idx, hydrogens)
         self._add_bonds(mol)
-        return self._remove_rgroup_atoms(mol)
+        return self._remove_rgroup_atoms(mol, hydrogens)
 
     def _replace_rgroups(
-        self, mol: Chem.RWMol, atom_offset: int, monomer_idx: int
+        self,
+        mol: Chem.RWMol,
+        atom_offset: int,
+        monomer_idx: int,
+        hydrogens: dict[int, int],
     ) -> None:
-        """Cap every R-group of a monomer that no bond has claimed."""
+        """Cap every R-group of a monomer that no bond has claimed.
+
+        A hydrogen cap needs no atom of its own: the dummy is deleted and RDKit
+        fills the free valence with an implicit hydrogen. Not every atom gets
+        one, so the hydrogens the atom should end up with are noted in
+        ``hydrogens`` for _remove_rgroup_atoms to make good.
+        """
         monomer = self.monomers[monomer_idx]
         for rgroup, (cap, atom_idx, attachment) in enumerate(
             zip(
@@ -1239,22 +1255,12 @@ class Molecule:
             if (monomer_idx, rgroup) in self.used_rgroups:
                 continue
             if cap is None or cap == "H":
-                self._add_hydrogen_cap(mol, atom_offset + attachment)
+                atom_idx = atom_offset + attachment
+                if atom_idx not in hydrogens:
+                    hydrogens[atom_idx] = mol.GetAtomWithIdx(atom_idx).GetTotalNumHs()
+                hydrogens[atom_idx] += 1
             else:
                 self._replace_rgroup(mol, atom_offset + atom_idx, cap)
-
-    @staticmethod
-    def _add_hydrogen_cap(mol: Chem.RWMol, attachment_idx: int) -> None:
-        """Make up for the hydrogen an unused R-group leaves behind.
-
-        A hydrogen cap needs no atom of its own: the dummy is deleted and RDKit
-        fills the free valence with an implicit hydrogen. An atom whose
-        hydrogen count is fixed, such as any bracket atom in SMILES, gets no
-        implicit hydrogens, so it would be left a radical without this.
-        """
-        atom = mol.GetAtomWithIdx(attachment_idx)
-        if atom.GetNoImplicit():
-            atom.SetNumExplicitHs(atom.GetNumExplicitHs() + 1)
 
     @staticmethod
     def _replace_rgroup(mol: Chem.RWMol, atom_idx: int, cap: str) -> None:
@@ -1388,8 +1394,14 @@ class Molecule:
             if flip:
                 bond.SetStereo(_FLIPPED_STEREO[bond.GetStereo()])
 
-    def _remove_rgroup_atoms(self, mol: Chem.RWMol) -> Chem.Mol:
-        """Delete the R-group atoms left over and renumber the bond list to match."""
+    def _remove_rgroup_atoms(
+        self, mol: Chem.RWMol, hydrogens: dict[int, int]
+    ) -> Chem.Mol:
+        """Delete the R-group atoms left over and renumber the bond list to match.
+
+        ``hydrogens`` gives the hydrogens each atom capped with hydrogen should
+        end up with, by its index before the deletion.
+        """
         rgroup_atoms = _dummy_atoms(mol)
         self._move_stereo_references(mol, set(rgroup_atoms))
         _delete_atoms(mol, rgroup_atoms)
@@ -1397,6 +1409,18 @@ class Molecule:
         def shifted(idx: int) -> int:
             """Where an atom that was not deleted ends up."""
             return idx - bisect.bisect_left(rgroup_atoms, idx)
+
+        # RDKit gives no implicit hydrogens to an atom whose hydrogen count is
+        # fixed, such as any bracket atom in SMILES, nor to an aromatic
+        # nitrogen, which it cannot tell from one that needs none. Either is
+        # left a hydrogen short, a radical or a ring that cannot be kekulized,
+        # so only the hydrogens RDKit did not add are made explicit.
+        for atom_idx, expected in hydrogens.items():
+            atom = mol.GetAtomWithIdx(shifted(atom_idx))
+            missing = expected - atom.GetTotalNumHs()
+            if missing > 0:
+                atom.SetNumExplicitHs(atom.GetNumExplicitHs() + missing)
+                atom.UpdatePropertyCache(strict=False)
 
         for bond in self.bondlist:
             monomer1_idx, atom1_idx, monomer2_idx, atom2_idx = bond
