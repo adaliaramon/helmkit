@@ -27,7 +27,6 @@ NEGATIVE = load("negative_testcases.txt")
 # helmkit should reject it.
 NOT_YET_BUILT = {
     2: "monomer repeats such as A'23'",
-    4: 'annotations on a monomer such as C"mutation"',
     5: "repeats of a group of monomers such as (R(G)P)'15'",
     25: "monomer repeats such as A'55'",
 }

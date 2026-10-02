@@ -54,6 +54,9 @@ _DUMMY_BY_DOUBLE_BOND = Chem.MolFromSmarts("[#0]~*=[!D1]")
 # would miss atoms in a long polymer.
 _ALL_MATCHES = 2**32 - 1
 
+# The characters that matter when splitting a sequence into monomers.
+_SEQUENCE_SPECIAL = frozenset('"[]().')
+
 
 def get_molecule_property(
     molecule: Chem.Mol, property_name: str, default: str | None = None
@@ -556,7 +559,6 @@ def _cap_group_atomic_number(cap_group: str) -> int | None:
 class Molecule:
     """Single class for HELM to RDKit Mol conversion."""
 
-    _bracket_re = re.compile(r"{(.*?)}")
     _annotation_re = re.compile(r'"[^"]*"')
     _chain_id_re = re.compile(r"([A-Z]+)(\d+)")
     _ambiguous_re = re.compile(r"\([^,]+,\[([^\]]+)\]\)")
@@ -602,26 +604,41 @@ class Molecule:
         part contains both separators, so the split tracks bracket depth rather
         than looking ahead for a closing bracket: a lookahead cannot tell a
         separator inside a monomer from one followed by a later section that
-        happens to contain a bracket.
+        happens to contain a bracket. A quoted annotation may contain anything,
+        so nothing inside quotes counts. Once ``maxsplit`` parts are split off,
+        the rest is left as it is, unread.
         """
+        if '"' not in text and "[" not in text:
+            # Nothing can hide a separator, and a stray `]` counts for nothing.
+            return text.split(separator, maxsplit or -1)
+
         parts: list[str] = []
         start = depth = 0
+        quoted = False
+        special = {'"', "[", "]", separator}
 
         for i, char in enumerate(text):
-            if char == "[":
+            # Most characters are none of these, so they are passed over first.
+            if char not in special:
+                continue
+            if char == '"':
+                quoted = not quoted
+            elif quoted:
+                continue
+            elif char == "[":
                 depth += 1
             elif char == "]":
                 depth = max(depth - 1, 0)
-            elif (
-                char == separator
-                and depth == 0
-                and (not maxsplit or len(parts) < maxsplit)
-            ):
+            elif depth == 0:
                 parts.append(text[start:i])
                 start = i + 1
-
-        if depth:
-            raise ValueError(f"Unbalanced brackets in {text}. Check HELM.")
+                if len(parts) == maxsplit:
+                    break
+        else:
+            if quoted:
+                raise ValueError(f"Unbalanced quotes in {text}. Check HELM.")
+            if depth:
+                raise ValueError(f"Unbalanced brackets in {text}. Check HELM.")
 
         parts.append(text[start:])
         return parts
@@ -630,24 +647,42 @@ class Molecule:
     def _split_helm_sections(helm: str) -> tuple[list[str], list[str], list[str]]:
         """Return the polymers, connections and hydrogen bonds of a HELM string.
 
-        The annotation and version sections that may follow are not used.
+        The annotation and version sections that may follow are not used, so
+        they are not read either.
         """
-        sections = Molecule._split_outside_brackets(helm, "$", maxsplit=4)
+        sections = Molecule._split_outside_brackets(helm, "$", maxsplit=3)
         sections += [""] * (3 - len(sections))
 
+        # An empty polymer section still yields one empty polymer, which
+        # _process_polymers rejects; the other sections may be empty.
         polymers = Molecule._split_outside_brackets(sections[0], "|")
-        connections = sections[1].split("|") if sections[1] else []
-        hydrogen_bonds = sections[2].split("|") if sections[2] else []
+        connections, hydrogen_bonds = (
+            Molecule._split_outside_brackets(section, "|") if section else []
+            for section in sections[1:3]
+        )
         return polymers, connections, hydrogen_bonds
 
     @staticmethod
     def _split_sequence_with_brackets(sequence: str) -> list[str]:
-        """Split a sequence into individual monomers, respecting brackets."""
+        """Split a sequence into individual monomers, respecting brackets.
+
+        Nothing inside a quoted annotation counts, the way nothing inside a
+        bracketed monomer does; the split on ``$`` and ``|`` has already made
+        sure the quotes are balanced.
+        """
         parts: list[str] = []
         start = depth = 0
+        quoted = False
 
         for i, char in enumerate(sequence):
-            if char in "[(":
+            # Most characters are none of these, so they are passed over first.
+            if char not in _SEQUENCE_SPECIAL:
+                continue
+            if char == '"':
+                quoted = not quoted
+            elif quoted:
+                continue
+            elif char in "[(":
                 depth += 1
             elif char in "])":
                 depth -= 1
@@ -655,7 +690,7 @@ class Molecule:
                     raise ValueError(
                         f"Unbalanced brackets in sequence {sequence}. Check HELM."
                     )
-            elif char == "." and depth == 0:
+            elif depth == 0:
                 parts.append(sequence[start:i])
                 start = i + 1
 
@@ -691,6 +726,42 @@ class Molecule:
         return parts
 
     @staticmethod
+    def _sequence_span(chain: str) -> tuple[int, int] | None:
+        """Find the braces around a polymer's sequence.
+
+        The closing brace is the first one outside a quoted monomer annotation,
+        which may contain braces of its own.
+        """
+        open_idx = chain.find("{")
+        if open_idx < 0:
+            return None
+        close_idx = chain.find("}", open_idx)
+        if close_idx < 0:
+            return None
+        if '"' not in chain[open_idx:close_idx]:
+            return open_idx, close_idx
+
+        quoted = False
+        for i in range(open_idx + 1, len(chain)):
+            char = chain[i]
+            if char == '"':
+                quoted = not quoted
+            elif char == "}" and not quoted:
+                return open_idx, i
+        return None
+
+    @staticmethod
+    def _strip_annotation(text: str) -> str:
+        """Remove the quoted annotation that may close a monomer or connection.
+
+        An annotation is a note for the reader, such as ``"mutation"``, and
+        says nothing about the structure.
+        """
+        if not text.endswith('"'):
+            return text
+        return text[: text.rfind('"', 0, -1)]
+
+    @staticmethod
     def _extract_polymer_type(chain_id: str) -> PolymerType:
         """Return the polymer type of a chain ID such as ``PEPTIDE1``."""
         match = Molecule._chain_id_re.fullmatch(chain_id)
@@ -707,31 +778,34 @@ class Molecule:
         """Add the monomers of each polymer chain and the bonds along it."""
         for chain in polymers:
             chain = chain.strip()
-            match = self._bracket_re.search(chain)
-            if not match:
+            span = self._sequence_span(chain)
+            if span is None:
                 raise ValueError(
                     f"Polymer {chain} is not of the form CHAIN{{sequence}}. Check HELM."
                 )
+            open_idx, close_idx = span
 
-            trailing = chain[match.end() :]
+            trailing = chain[close_idx + 1 :]
             if trailing and not self._annotation_re.fullmatch(trailing):
                 raise ValueError(
                     f"Unexpected text {trailing} after the sequence of polymer {chain}. Check HELM."
                 )
 
-            chain_id = chain[: match.start()]
+            chain_id = chain[:open_idx]
             polymer_type = self._extract_polymer_type(chain_id)
 
             if chain_id in self.chain_offset:
                 raise ValueError(f"Duplicate chain ID: {chain_id}")
 
-            sequence = match.group(1)
+            sequence = chain[open_idx + 1 : close_idx]
             if not sequence:
                 raise ValueError(
                     f"Polymer {chain_id} has an empty sequence. Check HELM."
                 )
 
             residues = self._split_sequence_with_brackets(sequence)
+            if '"' in sequence:
+                residues = [self._strip_annotation(r) for r in residues]
             self.chain_offset[chain_id] = len(self.monomers)
 
             if polymer_type == "PEPTIDE":
@@ -904,7 +978,7 @@ class Molecule:
         HELM2 writes hydrogen bonds here too, as ``pair`` in place of both
         R-groups; they are recorded rather than bonded.
         """
-        for connection_str in connections:
+        for connection_str in map(self._strip_annotation, connections):
             if self._is_hydrogen_bond(connection_str):
                 self._add_hydrogen_bond(connection_str)
                 continue
@@ -924,7 +998,7 @@ class Molecule:
 
     def _process_hydrogen_bonds(self, connections: list[str]) -> None:
         """Record the hydrogen bonds of HELM1's own section for them."""
-        for connection_str in connections:
+        for connection_str in map(self._strip_annotation, connections):
             self._add_hydrogen_bond(connection_str)
 
     def _add_hydrogen_bond(self, connection_str: str) -> None:
