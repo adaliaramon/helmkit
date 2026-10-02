@@ -583,6 +583,7 @@ class Molecule:
     """Single class for HELM to RDKit Mol conversion."""
 
     _annotation_re = re.compile(r'"[^"]*"')
+    _polymer_group_re = re.compile(r"G\d+\(.*\)")
     _chain_id_re = re.compile(r"([A-Z]+)(\d+)")
     _ambiguous_re = re.compile(r"\([^,]+,\[([^\]]+)\]\)")
     _bond_spec_re = re.compile(r"[-:]")
@@ -1108,8 +1109,17 @@ class Molecule:
         return len(bond_parts) == 4 and "pair" in (bond_parts[1], bond_parts[3])
 
     def _process_hydrogen_bonds(self, connections: list[str]) -> None:
-        """Record the hydrogen bonds of HELM1's own section for them."""
+        """Record the hydrogen bonds of HELM1's own section for them.
+
+        HELM2 gives this section to polymer groups instead, such as
+        ``G1(PEPTIDE1+CHEM1:2.5)``. A group gathers polymers into a mixture, a
+        ratio or a set of alternatives, none of which is one molecule.
+        """
         for connection_str in map(self._strip_annotation, connections):
+            if self._polymer_group_re.fullmatch(connection_str):
+                raise ValueError(
+                    f"Polymer group {connection_str} describes a mixture or a choice of polymers rather than one molecule, which helmkit cannot build."
+                )
             self._add_hydrogen_bond(connection_str)
 
     def _add_hydrogen_bond(self, connection_str: str) -> None:

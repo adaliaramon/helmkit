@@ -320,3 +320,22 @@ def test_a_dummy_atom_without_an_rgroup_label_is_rejected():
     cap was never applied and the residue came back as an aldehyde."""
     with pytest.raises(ValueError, match=r"dummy atom .* no _R<number> label"):
         Molecule("PEPTIDE1{[*N[C@@H](C)C(=O)* |$_R1;;;;;;$|]}$$$$")
+
+
+@pytest.mark.parametrize(
+    "group",
+    [
+        "G1(PEPTIDE1+PEPTIDE2)",
+        "G1(PEPTIDE1+PEPTIDE2:2.5)",
+        "G1(PEPTIDE1,PEPTIDE2)",
+        "G1(PEPTIDE1:40+PEPTIDE2:60)",
+        "G1(PEPTIDE1+PEPTIDE2)|G2(G1+PEPTIDE1:4.5)",
+        'G1(PEPTIDE1+PEPTIDE2)"a note"',
+    ],
+)
+def test_a_polymer_group_is_rejected_as_not_one_molecule(group):
+    """HELM2 gives the third section to polymer groups, which describe a
+    mixture or a choice of polymers. They used to be read as malformed
+    hydrogen bonds, which said nothing about what was wrong."""
+    with pytest.raises(ValueError, match="mixture or a choice of polymers"):
+        Molecule(f"PEPTIDE1{{A}}|PEPTIDE2{{G}}$${group}$$V2.0")
