@@ -2,6 +2,7 @@ import pytest
 from helmkit import load_monomer_library
 from helmkit import Molecule
 from rdkit import Chem
+from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 
 
 def glycine_library(path, m_rgroups):
@@ -118,3 +119,27 @@ def test_an_unused_inferred_r2_is_still_a_free_acid():
     molecule = Molecule("PEPTIDE1{[N[C@@H](C)C(=O)O]}$$$$")
 
     assert Chem.MolToSmiles(molecule.mol) == canonical("C[C@H](N)C(=O)O")
+
+
+@pytest.mark.parametrize(
+    ("monomer", "expected"),
+    [
+        ("[*[NH][C@@H](C)C(=O)* |$_R1;;;;;;_R2$|]", "C[C@H](N)C(=O)O"),
+        ("[*[C@@H](C)C(=O)* |$_R1;;;;;_R2$|]", "CCC(=O)O"),
+    ],
+)
+def test_an_unused_rgroup_on_a_bracket_atom_is_capped_with_hydrogen(monomer, expected):
+    """A bracket atom states its hydrogen count, so deleting the R-group left
+    it a hydrogen short: an aminyl radical or a carbene instead of the cap."""
+    mol = Molecule(f"PEPTIDE1{{{monomer}}}$$$$").mol
+
+    # SMILES and InChI both fill the missing hydrogen back in, so only the
+    # formula of the molecule as built shows it.
+    assert CalcMolFormula(mol) == CalcMolFormula(Chem.MolFromSmiles(expected))
+    assert Chem.MolToSmiles(mol) == canonical(expected)
+
+
+def test_a_bonded_rgroup_on_a_bracket_atom_gains_no_hydrogen():
+    mol = Molecule("PEPTIDE1{G.[*[NH][C@@H](C)C(=O)* |$_R1;;;;;;_R2$|]}$$$$").mol
+
+    assert Chem.MolToSmiles(mol) == canonical("NCC(=O)N[C@@H](C)C(=O)O")

@@ -90,3 +90,24 @@ def test_a_cyclic_peptide_reports_its_ring():
 
     assert linear.GetRingInfo().NumRings() == 0
     assert cyclic.GetRingInfo().NumRings() == 1
+
+
+def test_a_bonded_rgroup_keeps_the_reference_beside_another_substituent():
+    """With a methyl on the same end there were two atoms to choose from, so
+    the geometry was dropped, although the bond stands where the R-group did."""
+    molecule = Molecule(
+        "PEPTIDE1{A}|CHEM1{[*/C(C)=C/C |$_R1;;;;$|]}$PEPTIDE1,CHEM1,1:R2-1:R1$$$"
+    )
+
+    assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles("C[C@H](N)C(=O)/C(C)=C/C")
+
+
+def test_a_bond_through_one_rgroup_is_not_mistaken_for_the_other():
+    """R1 is the reference and goes unused while R2 on the same end is bonded.
+    The bonded atom sits where R2 stood, across from R1, so the parity flips;
+    it used to be taken for R1's replacement and the geometry was inverted."""
+    molecule = Molecule(
+        "PEPTIDE1{A}|CHEM1{[*/C(*)=C/C |$_R1;;_R2;;$|]}$PEPTIDE1,CHEM1,1:R2-1:R2$$$"
+    )
+
+    assert Chem.MolToSmiles(molecule.mol) == Chem.CanonSmiles("C[C@H](N)C(=O)/C=C\\C")

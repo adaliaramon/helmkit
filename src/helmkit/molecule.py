@@ -314,6 +314,13 @@ def _number_rgroups(
     for atom in mol.GetAtoms():
         label = atom.GetProp("atomLabel") if atom.HasProp("atomLabel") else ""
         if not label.startswith("_R"):
+            # Every dummy atom is deleted once the molecule is built, so one
+            # that is not an R-group would vanish along with whatever cap or
+            # bond it was meant to stand for.
+            if atom.GetAtomicNum() == 0:
+                raise ValueError(
+                    f"Monomer {monomer_name} has a dummy atom (atom {atom.GetIdx()}) with no _R<number> label, so it is not an R-group."
+                )
             core_atoms.append(atom.GetIdx())
             continue
 
@@ -505,6 +512,8 @@ class Molecule:
         # Each inter-monomer bond as [monomer1, atom1, monomer2, atom2], with
         # atom indices relative to their monomer.
         self.bondlist: list[list[int]] = []
+        # The 0-based R-groups each bond in the bond list was made through.
+        self.bond_rgroups: list[tuple[int, int]] = []
         # The index of the first atom of each monomer, followed by the total.
         self.offset: list[int] = []
         self.chain_offset: dict[str, int] = {}
@@ -899,6 +908,7 @@ class Molecule:
             self.monomers[monomer_idx2], rgroup2, monomer_idx2 + 1, context
         )
         self.bondlist.append([monomer_idx1, atom1, monomer_idx2, atom2])
+        self.bond_rgroups.append((rgroup1, rgroup2))
         self._mark_used_rgroup(monomer_idx1, rgroup1)
         self._mark_used_rgroup(monomer_idx2, rgroup2)
 
@@ -928,34 +938,52 @@ class Molecule:
         sizes = (monomer["m_romol"].GetNumAtoms() for monomer in self.monomers)
         self.offset = [0, *itertools.accumulate(sizes)]
 
-        for monomer, offset in zip(self.monomers, self.offset):
-            self._replace_rgroups(mol, offset, monomer)
+        for monomer_idx, offset in enumerate(self.offset[:-1]):
+            self._replace_rgroups(mol, offset, monomer_idx)
         self._add_bonds(mol)
         return self._remove_rgroup_atoms(mol)
 
     def _replace_rgroups(
-        self, mol: Chem.RWMol, atom_offset: int, monomer: MonomerData
+        self, mol: Chem.RWMol, atom_offset: int, monomer_idx: int
     ) -> None:
         """Cap every R-group of a monomer that no bond has claimed."""
-        for rgroup, (cap, atom_idx) in enumerate(
-            zip(monomer["m_Rgroups"], monomer["m_RgroupIdx"]), start=1
+        monomer = self.monomers[monomer_idx]
+        for rgroup, (cap, atom_idx, attachment) in enumerate(
+            zip(
+                monomer["m_Rgroups"],
+                monomer["m_RgroupIdx"],
+                monomer["m_attachmentPointIdx"],
+            )
         ):
-            if cap is None:
+            if atom_idx is None or attachment is None:
+                if cap is not None:
+                    raise ValueError(
+                        f"R-group {rgroup + 1} of monomer {monomer['m_abbr']} has the cap group {cap} but no atom index."
+                    )
                 continue
-            if atom_idx is None:
-                raise ValueError(
-                    f"R-group {rgroup} of monomer {monomer['m_abbr']} has the cap group {cap} but no atom index."
-                )
-            self._replace_rgroup(mol, atom_offset + atom_idx, cap)
+            if (monomer_idx, rgroup) in self.used_rgroups:
+                continue
+            if cap is None or cap == "H":
+                self._add_hydrogen_cap(mol, atom_offset + attachment)
+            else:
+                self._replace_rgroup(mol, atom_offset + atom_idx, cap)
+
+    @staticmethod
+    def _add_hydrogen_cap(mol: Chem.RWMol, attachment_idx: int) -> None:
+        """Make up for the hydrogen an unused R-group leaves behind.
+
+        A hydrogen cap needs no atom of its own: the dummy is deleted and RDKit
+        fills the free valence with an implicit hydrogen. An atom whose
+        hydrogen count is fixed, such as any bracket atom in SMILES, gets no
+        implicit hydrogens, so it would be left a radical without this.
+        """
+        atom = mol.GetAtomWithIdx(attachment_idx)
+        if atom.GetNoImplicit():
+            atom.SetNumExplicitHs(atom.GetNumExplicitHs() + 1)
 
     @staticmethod
     def _replace_rgroup(mol: Chem.RWMol, atom_idx: int, cap: str) -> None:
         """Replace an unused R-group with the heavy atom of its cap group."""
-        # A hydrogen cap needs no atom of its own: the dummy is dropped while
-        # sanitizing and RDKit fills the free valence with an implicit hydrogen.
-        if cap == "H":
-            return
-
         # Leaving the cap group off would delete the dummy atom along with the
         # used R-groups and hand back a molecule that is quietly missing an atom.
         atomic_number = _cap_group_atomic_number(cap)
@@ -998,14 +1026,23 @@ class Molecule:
 
             mol.AddBond(atom1_idx, atom2_idx, Chem.BondType.SINGLE)
 
+    def _rgroup_atom(self, monomer_idx: int, rgroup: int) -> int:
+        """The absolute index of a monomer's 0-based R-group atom."""
+        atom_idx = self.monomers[monomer_idx]["m_RgroupIdx"][rgroup]
+        # Every bond is made through an R-group with an attachment point, which
+        # only an R-group with an atom has.
+        assert atom_idx is not None
+        return self.offset[monomer_idx] + atom_idx
+
     def _move_stereo_references(self, mol: Chem.RWMol, deleted: set[int]) -> None:
         """Move double bond stereo references off the atoms about to be deleted.
 
         RDKit drops a reference that no longer exists, and a double bond with no
-        references loses the geometry the monomer declared. The atom an
-        inter-monomer bond was made to stands where the R-group stood, so it
-        takes the reference over unchanged; any other surviving neighbour is on
-        the opposite side of the double bond and flips the parity.
+        references loses the geometry the monomer declared. The atom bonded
+        through an R-group stands where that R-group stood, so it takes the
+        reference over unchanged. An R-group no bond used leaves only an
+        implicit hydrogen in its place, so the other surviving neighbour takes
+        over instead: it is on the opposite side and flips the parity.
         """
         # A stereo reference is a neighbour of the double bond, so only a double
         # bond next to a deleted atom can lose one. Finding those by
@@ -1020,10 +1057,16 @@ class Molecule:
         if not candidates:
             return
 
-        bonded: defaultdict[int, set[int]] = defaultdict(set)
-        for _, first, _, second in self._bond_atoms():
-            bonded[first].add(second)
-            bonded[second].add(first)
+        # Each R-group atom a bond was made through, and the atom bonded in its
+        # place. Which R-group matters, not just which atom it was on: an atom
+        # can carry two, and the atom bonded through one is not where the other
+        # stood.
+        replaced_by: dict[int, int] = {}
+        for (monomer1, first, monomer2, second), (rgroup1, rgroup2) in zip(
+            self._bond_atoms(), self.bond_rgroups
+        ):
+            replaced_by[self._rgroup_atom(monomer1, rgroup1)] = second
+            replaced_by[self._rgroup_atom(monomer2, rgroup2)] = first
 
         for bond in map(mol.GetBondWithIdx, candidates):
             if bond.GetStereo() not in _FLIPPED_STEREO:
@@ -1040,23 +1083,25 @@ class Molecule:
                 if reference not in deleted:
                     moved.append(reference)
                     continue
+                if reference in replaced_by:
+                    moved.append(replaced_by[reference])
+                    continue
                 end = next(
                     (e for e in ends if mol.GetBondBetweenAtoms(e, reference)), None
                 )
                 if end is None:
                     break
                 other_end = ends[1] if end == ends[0] else ends[0]
-                candidates = [
+                others = [
                     neighbour.GetIdx()
                     for neighbour in mol.GetAtomWithIdx(end).GetNeighbors()
                     if neighbour.GetIdx() not in deleted
                     and neighbour.GetIdx() != other_end
                 ]
-                if len(candidates) != 1:
+                if len(others) != 1:
                     break
-                if candidates[0] not in bonded[end]:
-                    flip = not flip
-                moved.append(candidates[0])
+                flip = not flip
+                moved.append(others[0])
 
             if len(moved) != 2:
                 # Nothing dependable to point at, so drop the geometry rather

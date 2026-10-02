@@ -277,3 +277,10 @@ def test_a_polymer_of_a_single_dummy_monomer_is_rejected():
     """The one monomer was dropped and an empty molecule came back instead."""
     with pytest.raises(ValueError, match="no atoms besides its R-groups"):
         Molecule("PEPTIDE1{[*]}$$$$")
+
+
+def test_a_dummy_atom_without_an_rgroup_label_is_rejected():
+    """Every dummy atom is deleted, so an unlabelled one vanished: here the R2
+    cap was never applied and the residue came back as an aldehyde."""
+    with pytest.raises(ValueError, match=r"dummy atom .* no _R<number> label"):
+        Molecule("PEPTIDE1{[*N[C@@H](C)C(=O)* |$_R1;;;;;;$|]}$$$$")
