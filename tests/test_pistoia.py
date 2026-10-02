@@ -98,12 +98,6 @@ def test_an_inline_monomer_written_with_bare_dummies_is_the_same_molecule():
     assert CalcMolFormula(bare.mol) == "C10H19N3O4"
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    strict=True,
-    reason="atom-mapped leaving atoms are kept as ordinary atoms; the nitrogen "
-    "ends up with four bonds and the molecule a hydrogen too many",
-)
 def test_an_inline_monomer_written_with_atom_maps_is_the_same_molecule():
     """SMILESTest.testGetSmilesFormats: `[H:1]` and `[OH:2]` mark the atoms an
     R-group replaces, and describe the same monomer as the CXSMILES labels."""
@@ -115,11 +109,6 @@ def test_an_inline_monomer_written_with_atom_maps_is_the_same_molecule():
     assert Chem.MolToSmiles(mapped.mol) == Chem.MolToSmiles(labelled.mol)
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    strict=True,
-    reason="atom-mapped leaving atoms are kept as ordinary atoms",
-)
 def test_an_atom_mapped_alanine_is_alanine():
     """SMILESTest.testInlineNotation spells the first residue as SMILES."""
     library = Molecule("PEPTIDE1{A.G.G.G.C.C.K.K.K.K}$$$$")

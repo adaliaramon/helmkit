@@ -300,6 +300,60 @@ def _sanitize_inline_monomer(monomer_name: str, mol: Chem.Mol) -> Chem.Mol:
     return mol
 
 
+def _rgroups_from_atom_maps(monomer_name: str, mol: Chem.Mol) -> dict[int, str | None]:
+    """Turn the atom-mapped leaving atoms of HELM2 inline SMILES into R-groups.
+
+    HELM2 can mark R-group ``n`` with atom map ``n`` on the atom that leaves
+    when the bond is made: ``[*:1]`` is a bare R-group, while ``[H:1]`` and
+    ``[OH:2]`` also say what caps it when it is not used. Each becomes a dummy
+    labelled ``_R<n>``, the same as the CXSMILES spelling. Returns the cap of
+    each R-group found, by number.
+    """
+    caps: dict[int, str | None] = {}
+    for atom in mol.GetAtoms():
+        r_num = atom.GetAtomMapNum()
+        if not r_num:
+            continue
+        if atom.HasProp("atomLabel"):
+            raise ValueError(
+                f"Monomer {monomer_name} gives atom {atom.GetIdx()} both an atom map and an atom label; mark each R-group one way."
+            )
+        bonds = atom.GetBonds()
+        if len(bonds) != 1 or bonds[0].GetBondType() != Chem.BondType.SINGLE:
+            raise ValueError(
+                f"Monomer {monomer_name} maps atom {atom.GetIdx()} as R{r_num}, but only an atom joined to the monomer by a single bond can be an R-group."
+            )
+        if atom.GetFormalCharge() or atom.GetIsotope() or atom.GetNumRadicalElectrons():
+            raise ValueError(
+                f"Monomer {monomer_name} maps a charged, isotopic or radical atom as R{r_num}, which cannot be a cap group."
+            )
+        if r_num > MAX_RGROUPS:
+            raise ValueError(
+                f"Monomer {monomer_name} maps an atom as R{r_num}; R-groups run from R1 to R{MAX_RGROUPS}."
+            )
+        if r_num in caps:
+            raise ValueError(
+                f"Monomer {monomer_name} maps more than one atom as R{r_num}."
+            )
+
+        if atom.GetAtomicNum() == 0:
+            caps[r_num] = None
+        else:
+            hydrogens = atom.GetNumExplicitHs()
+            caps[r_num] = (
+                atom.GetSymbol()
+                + "H" * bool(hydrogens)
+                + (str(hydrogens) if hydrogens > 1 else "")
+            )
+
+        atom.SetAtomicNum(0)
+        atom.SetNumExplicitHs(0)
+        atom.SetNoImplicit(True)
+        atom.SetAtomMapNum(0)
+        atom.SetProp("atomLabel", f"_R{r_num}")
+    return caps
+
+
 def _number_rgroups(
     monomer_name: str, mol: Chem.Mol
 ) -> tuple[Chem.RWMol, list[int | None]]:
@@ -319,7 +373,7 @@ def _number_rgroups(
             # bond it was meant to stand for.
             if atom.GetAtomicNum() == 0:
                 raise ValueError(
-                    f"Monomer {monomer_name} has a dummy atom (atom {atom.GetIdx()}) with no _R<number> label, so it is not an R-group."
+                    f"Monomer {monomer_name} has a dummy atom (atom {atom.GetIdx()}) with no _R<number> label or atom map, so it is not an R-group."
                 )
             core_atoms.append(atom.GetIdx())
             continue
@@ -426,10 +480,13 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
             f"Monomer {monomer_name} not in monomer library and is not a valid SMILES string"
         )
 
+    mapped_caps = _rgroups_from_atom_maps(monomer_name, mol)
     mol = _sanitize_inline_monomer(monomer_name, mol)
     mol, rgroup_idx = _number_rgroups(monomer_name, mol)
     attachment_points = infer_attachment_points(mol, rgroup_idx, monomer_name)
     caps: list[str | None] = [None] * MAX_RGROUPS
+    for r_num, cap in mapped_caps.items():
+        caps[r_num - 1] = cap
 
     if m_type == "aa":
         has_r1, has_r2 = rgroup_idx[0] is not None, rgroup_idx[1] is not None
@@ -446,10 +503,11 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
         # becomes an aldehyde, so the same monomer spelled as SMILES and looked
         # up by symbol would not agree. Only an explicitly labelled R2 is
         # capped: an R2 inferred above sits on a carboxyl group that still
-        # carries its hydroxyl.
+        # carries its hydroxyl. A cap the SMILES spells out is kept.
         r2_attachment = attachment_points[1]
         if (
             has_r2
+            and caps[1] is None
             and r2_attachment is not None
             and _is_free_carbonyl_carbon(mol, r2_attachment)
         ):
