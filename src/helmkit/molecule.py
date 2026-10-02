@@ -497,7 +497,10 @@ def _add_carboxyl_rgroup(mol: Chem.RWMol) -> tuple[int, int, str | None] | None:
 
 def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerData:
     """Build a monomer from an inline CXSMILES string with ``_R<n>`` labels."""
-    mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
+    # The name may just be a symbol the library lacks, such as [Dig]; the error
+    # below says so, and RDKit's own account of the parse would only add noise.
+    with rdBase.BlockLogs():
+        mol = Chem.MolFromSmiles(monomer_name, sanitize=False)
     if mol is None:
         # Accept CXSMILES atom labels whose closing `$` is missing.
         if monomer_name.endswith("|") and not monomer_name.endswith("$|"):

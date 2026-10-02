@@ -339,3 +339,12 @@ def test_a_polymer_group_is_rejected_as_not_one_molecule(group):
     hydrogen bonds, which said nothing about what was wrong."""
     with pytest.raises(ValueError, match="mixture or a choice of polymers"):
         Molecule(f"PEPTIDE1{{A}}|PEPTIDE2{{G}}$${group}$$V2.0")
+
+
+@pytest.mark.parametrize("helm", ["CHEM1{[Dig]}$$$$", "PEPTIDE1{A.[Xyz].G}$$$$"])
+def test_an_unknown_bracketed_symbol_is_rejected_quietly(helm, capfd):
+    """It is tried as SMILES, and RDKit used to print its parse errors too."""
+    with pytest.raises(ValueError, match="not in monomer library and is not a valid"):
+        Molecule(helm)
+
+    assert "SMILES Parse Error" not in capfd.readouterr().err
