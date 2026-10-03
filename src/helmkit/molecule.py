@@ -4,7 +4,6 @@ import multiprocessing
 import re
 import warnings
 from collections import defaultdict
-from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Iterator
 from collections.abc import Sequence
@@ -13,9 +12,7 @@ from importlib.resources import files
 from typing import assert_never
 from typing import cast
 from typing import Literal
-from typing import overload
 from typing import TypedDict
-from typing import TypeVar
 
 from rdkit import Chem
 from rdkit import rdBase
@@ -67,34 +64,11 @@ def get_molecule_property(
     return molecule.GetProp(property_name)
 
 
-T = TypeVar("T")
-
-
-@overload
 def parse_comma_separated_property(
-    molecule: Chem.Mol, property_name: str, convert_func: None = None
-) -> list[str | None]: ...
-
-
-@overload
-def parse_comma_separated_property(
-    molecule: Chem.Mol, property_name: str, convert_func: Callable[[str], T]
-) -> list[T | None]: ...
-
-
-def parse_comma_separated_property(
-    molecule: Chem.Mol,
-    property_name: str,
-    convert_func: Callable[[str], T] | None = None,
-) -> list[str | None] | list[T | None]:
-    property_value = get_molecule_property(molecule, property_name)
-    if not property_value:
-        return []
-
-    values = property_value.split(",")
-    if convert_func:
-        return [None if v == "None" else convert_func(v) for v in values]
-    return [None if v == "None" else v for v in values]
+    molecule: Chem.Mol, property_name: str
+) -> list[str | None]:
+    value = get_molecule_property(molecule, property_name)
+    return [None if v == "None" else v for v in value.split(",")] if value else []
 
 
 def _dummy_atoms(molecule: Chem.Mol) -> list[int]:
@@ -228,7 +202,6 @@ class MonomerData(TypedDict):
     m_Rgroups: list[str | None]
     m_RgroupIdx: list[int | None]
     m_attachmentPointIdx: list[int | None]
-    m_type: str
     m_abbr: str
 
 
@@ -261,7 +234,10 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
 
         rgroups = parse_comma_separated_property(mol, "m_Rgroups")
         try:
-            rgroup_idx = parse_comma_separated_property(mol, "m_RgroupIdx", int)
+            rgroup_idx = [
+                None if v is None else int(v)
+                for v in parse_comma_separated_property(mol, "m_RgroupIdx")
+            ]
         except ValueError as e:
             raise ValueError(
                 f"Monomer {symbol} has an m_RgroupIdx that is not a whole number: {e}"
@@ -274,7 +250,6 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
             "m_Rgroups": rgroups,
             "m_RgroupIdx": rgroup_idx,
             "m_attachmentPointIdx": infer_attachment_points(mol, rgroup_idx, symbol),
-            "m_type": m_type,
             # m_abbr is only used for display, so fall back to the symbol when
             # a library does not provide it instead of dropping the monomer.
             "m_abbr": get_molecule_property(mol, "m_abbr") or symbol,
@@ -546,20 +521,13 @@ def _create_missing_monomer(monomer_name: str, m_type: str = "aa") -> MonomerDat
     # counts RDKit keeps for the atoms around it out of date.
     mol.UpdatePropertyCache(strict=False)
 
-    mol.SetProp("symbol", monomer_name)
-    mol.SetProp("m_abbr", monomer_name)
-    mol.SetProp("m_type", m_type)
-    mol.SetProp("m_RgroupIdx", ",".join(map(str, rgroup_idx)))
     mol.SetProp("m_Rgroups", ",".join(map(str, caps)))
-    mol.SetProp("m_attachmentPointIdx", ",".join(map(str, attachment_points)))
-    mol.SetProp("natAnalog", "")
 
     return {
         "m_romol": mol,
         "m_Rgroups": caps,
         "m_RgroupIdx": rgroup_idx,
         "m_attachmentPointIdx": attachment_points,
-        "m_type": m_type,
         "m_abbr": monomer_name,
     }
 
@@ -607,7 +575,6 @@ class Molecule:
         self.bond_rgroups: list[tuple[int, int]] = []
         # The index of the first atom of each monomer, followed by the total.
         self.offset: list[int] = []
-        self.chain_offset: dict[str, int] = {}
         self.residue_reps: defaultdict[str, list[int]] = defaultdict(list)
         self.has_ambiguous_monomers = False
         self.used_rgroups: set[tuple[int, int]] = set()
@@ -906,7 +873,7 @@ class Molecule:
             chain_id = chain[:open_idx]
             polymer_type = self._extract_polymer_type(chain_id)
 
-            if chain_id in self.chain_offset:
+            if chain_id in self.residue_reps:
                 raise ValueError(f"Duplicate chain ID: {chain_id}")
 
             sequence = chain[open_idx + 1 : close_idx]
@@ -925,7 +892,6 @@ class Molecule:
                 or ".(" in sequence
             ):
                 residues = self._expand_residues(residues, polymer_type)
-            self.chain_offset[chain_id] = len(self.monomers)
 
             if polymer_type == "PEPTIDE":
                 self._process_peptide(chain_id, residues)
@@ -1049,11 +1015,12 @@ class Molecule:
         return rgroup - 1
 
     @staticmethod
-    def _parse_connection(connection_str: str) -> tuple[str, int, int, str, int, int]:
-        """Parse a connection into its two chains, 0-based residues and R-groups.
+    def _parse_connection(connection_str: str) -> tuple[str, str, str, list[str]]:
+        """Split a connection into its two chains, its bond and the bond's parts.
 
-        A connection that cannot be parsed is an error rather than a warning:
-        skipping it would return a molecule that is quietly missing a bond.
+        The parts are the residue and R-group at each end. A connection that
+        cannot be parsed is an error rather than a warning: skipping it would
+        return a molecule that is quietly missing a bond.
         """
         parts = connection_str.split(",")
         if len(parts) != 3:
@@ -1067,16 +1034,7 @@ class Molecule:
         if len(bond_parts) != 4:
             raise ValueError(f"Invalid bond format: {bond_spec}. Check HELM.")
 
-        residue1, rgroup1, residue2, rgroup2 = bond_parts
-
-        return (
-            chain_id1,
-            Molecule._parse_residue_number(residue1, bond_spec),
-            Molecule._parse_rgroup_number(rgroup1, bond_spec),
-            chain_id2,
-            Molecule._parse_residue_number(residue2, bond_spec),
-            Molecule._parse_rgroup_number(rgroup2, bond_spec),
-        )
+        return chain_id1, chain_id2, bond_spec, bond_parts
 
     def _resolve_residue(self, chain_id: str, residue: int, context: str) -> int:
         """Look up the monomer index of a 0-based residue of a declared chain."""
@@ -1098,22 +1056,19 @@ class Molecule:
         R-groups; they are recorded rather than bonded.
         """
         for connection_str in map(self._strip_annotation, connections):
-            if self._is_hydrogen_bond(connection_str):
-                self._add_hydrogen_bond(connection_str)
-                continue
-            chain_id1, residue1, rgroup1, chain_id2, residue2, rgroup2 = (
-                self._parse_connection(connection_str)
+            chain_id1, chain_id2, bond_spec, bond_parts = self._parse_connection(
+                connection_str
             )
+            if "pair" in (bond_parts[1], bond_parts[3]):
+                self._add_hydrogen_bond(chain_id1, chain_id2, bond_spec, bond_parts)
+                continue
+            residue1 = self._parse_residue_number(bond_parts[0], bond_spec)
+            rgroup1 = self._parse_rgroup_number(bond_parts[1], bond_spec)
+            residue2 = self._parse_residue_number(bond_parts[2], bond_spec)
+            rgroup2 = self._parse_rgroup_number(bond_parts[3], bond_spec)
             monomer_idx1 = self._resolve_residue(chain_id1, residue1, "connections")
             monomer_idx2 = self._resolve_residue(chain_id2, residue2, "connections")
             self._add_bond(monomer_idx1, rgroup1, monomer_idx2, rgroup2, "connections")
-
-    @staticmethod
-    def _is_hydrogen_bond(connection_str: str) -> bool:
-        """Does a connection name ``pair`` in place of an R-group?"""
-        bond_spec = connection_str.rsplit(",", 1)[-1]
-        bond_parts = Molecule._bond_spec_re.split(bond_spec)
-        return len(bond_parts) == 4 and "pair" in (bond_parts[1], bond_parts[3])
 
     def _process_hydrogen_bonds(self, connections: list[str]) -> None:
         """Record the hydrogen bonds of HELM1's own section for them.
@@ -1127,20 +1082,12 @@ class Molecule:
                 raise ValueError(
                     f"Polymer group {connection_str} describes a mixture or a choice of polymers rather than one molecule, which helmkit cannot build."
                 )
-            self._add_hydrogen_bond(connection_str)
+            self._add_hydrogen_bond(*self._parse_connection(connection_str))
 
-    def _add_hydrogen_bond(self, connection_str: str) -> None:
+    def _add_hydrogen_bond(
+        self, chain_id1: str, chain_id2: str, bond_spec: str, bond_parts: list[str]
+    ) -> None:
         """Record a hydrogen bond; it adds no bond to the molecule."""
-        parts = connection_str.split(",")
-        if len(parts) != 3:
-            raise ValueError(
-                f"Invalid hydrogen bond format: {connection_str}. Check HELM."
-            )
-        chain_id1, chain_id2, bond_spec = parts
-
-        bond_parts = self._bond_spec_re.split(bond_spec)
-        if len(bond_parts) != 4:
-            raise ValueError(f"Invalid hydrogen bond format: {bond_spec}. Check HELM.")
         # Anything else would be a covalent bond written where only hydrogen
         # bonds go, and recording it as one would quietly leave the bond out.
         if bond_parts[1] != "pair" or bond_parts[3] != "pair":
@@ -1249,10 +1196,6 @@ class Molecule:
             )
         ):
             if atom_idx is None or attachment is None:
-                if cap is not None:
-                    raise ValueError(
-                        f"R-group {rgroup + 1} of monomer {monomer['m_abbr']} has the cap group {cap} but no atom index."
-                    )
                 continue
             if (monomer_idx, rgroup) in self.used_rgroups:
                 continue
