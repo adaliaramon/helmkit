@@ -1,5 +1,6 @@
 import pytest
 from helmkit import load_monomer_library
+from helmkit import Molecule
 from rdkit import Chem
 
 
@@ -43,3 +44,20 @@ def test_monomer_without_symbol_is_skipped_with_a_warning(tmp_path):
         library = load_monomer_library(str(library_path))
 
     assert list(library["aa"]) == ["G"]
+
+
+def test_building_a_molecule_leaves_the_library_unchanged():
+    """Monomers are shared with the library, so bonding must not modify them."""
+    library = load_monomer_library()
+    before = {
+        m_type: {symbol: list(m["m_Rgroups"]) for symbol, m in monomers.items()}
+        for m_type, monomers in library.items()
+    }
+
+    Molecule("PEPTIDE1{A.G.C}|PEPTIDE2{A}$PEPTIDE1,PEPTIDE2,3:R3-1:R1$$$", library)
+
+    after = {
+        m_type: {symbol: list(m["m_Rgroups"]) for symbol, m in monomers.items()}
+        for m_type, monomers in library.items()
+    }
+    assert after == before

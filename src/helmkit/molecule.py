@@ -1015,8 +1015,8 @@ class Molecule:
             # writing here would grow it with every inline monomer ever parsed.
             monomer = _create_missing_monomer(monomer_name, m_type)
 
-        # The cap groups are copied because bonding clears the ones it uses.
-        return {**monomer, "m_Rgroups": monomer["m_Rgroups"][:]}
+        # Shared with the library and every other Molecule, so never modified.
+        return monomer
 
     @staticmethod
     def _parse_residue_number(value: str, bond_spec: str) -> int:
@@ -1207,7 +1207,6 @@ class Molecule:
                 f"R-group {rgroup + 1} of monomer {monomer_idx + 1} ({monomer['m_abbr']}) is bonded more than once. Check HELM."
             )
         self.used_rgroups.add((monomer_idx, rgroup))
-        monomer["m_Rgroups"][rgroup] = None
 
     # Building
 

@@ -36,23 +36,27 @@ and average parsing time:
 | Tool                                | Total Time (s) | Avg Time per Peptide (s) | Peptides per Second |
 |-------------------------------------|---------------:|-------------------------:|--------------------:|
 | `pyPept`                            |         676.65 |                  0.14400 |                6.94 |
-| `helmkit` (DB reload every peptide) |         252.67 |                  0.05383 |               18.58 |
-| `helmkit`                           |           2.07 |                  0.00044 |             2267.63 |
-| `helmkit` (parallel loading)        |           0.95 |                  0.00020 |             4926.11 |
+| `helmkit` (DB reload every peptide) |         343.37 |                  0.07315 |               13.67 |
+| `helmkit`                           |           1.63 |                  0.00035 |             2879.75 |
+| `helmkit` (parallel loading)        |           0.83 |                  0.00018 |             5655.42 |
 
-`helmkit` outperforms `pyPept` by approximately 327x when loading the monomer library
+`helmkit` outperforms `pyPept` by approximately 415× when loading the monomer library
 once per session. When forced to reload the library for every peptide, `helmkit` is
-still about 3× faster. If we use parallelized loading in `helmkit`, we achieve an
-additional 2× speedup, resulting in a total speedup of approximately 712× over
-`pyPept`.
+still about 2× faster; loading is slower than parsing because every monomer in the
+library is validated as it is read. If we use parallelized loading in `helmkit`, we
+achieve an additional 2× speedup, resulting in a total speedup of approximately 815×
+over `pyPept`.
 
 ## Environment
 
 Benchmarks were run on an Intel Core i7-4790 (4 cores, 8 threads, 3.6 GHz) with 31.1 GiB
-RAM and SSD storage, using Python 3.12.10 on Arch Linux (kernel 6.15.7). Key package
+RAM and SSD storage, using Python 3.12.12 on Arch Linux (kernel 7.2.7). Key package
 versions:
 
-- `polars 1.31.0` (CSV parsing and dataframe processing)
-- `rdkit 2025.3.3` (target output format and structure processing)
-- `pypept 1.0.0` (commit `ade9f5840691ad1f8fa22d13939a665c25175d5a`)
-- `helmkit 0.7.0` (local development version)
+- `polars 1.44.2` (CSV parsing and dataframe processing)
+- `rdkit 2026.03.6` (target output format and structure processing)
+- `helmkit 0.7.13` (local development version)
+
+The `pyPept` timing was measured earlier on the same machine, with Python 3.12.10,
+kernel 6.15.7, `polars 1.31.0`, `rdkit 2025.3.3` and `pypept 1.0.0` (commit
+`ade9f5840691ad1f8fa22d13939a665c25175d5a`).
