@@ -50,16 +50,10 @@ _DUMMY_BY_DOUBLE_BOND = Chem.MolFromSmarts("[#0]~*=[!D1]")
 # would miss atoms in a long polymer.
 _ALL_MATCHES = 2**32 - 1
 
-# The characters that matter when splitting a sequence into monomers.
-_SEQUENCE_SPECIAL = frozenset('"[]().')
 
-
-def get_molecule_property(
-    molecule: Chem.Mol, property_name: str, default: str | None = None
-) -> str | None:
-    # `Mol.GetProp` only accepts a `default` argument in recent RDKit releases.
+def get_molecule_property(molecule: Chem.Mol, property_name: str) -> str | None:
     if not molecule.HasProp(property_name):
-        return default
+        return None
     return molecule.GetProp(property_name)
 
 
@@ -593,7 +587,7 @@ class Molecule:
 
     @staticmethod
     def _split_outside_brackets(
-        text: str, separator: str, maxsplit: int = 0
+        text: str, separator: str, maxsplit: int = 0, parentheses: bool = False
     ) -> list[str]:
         """Split on a separator that is not inside a bracketed monomer name.
 
@@ -604,15 +598,20 @@ class Molecule:
         happens to contain a bracket. A quoted annotation may contain anything,
         so nothing inside quotes counts. Once ``maxsplit`` parts are split off,
         the rest is left as it is, unread.
+
+        Within a sequence, parentheses nest as well, and a closing bracket with
+        nothing to close is an error. A trailing separator still leaves an empty
+        part behind, which _process_monomer rejects rather than dropping.
         """
-        if '"' not in text and "[" not in text:
+        if not parentheses and '"' not in text and "[" not in text:
             # Nothing can hide a separator, and a stray `]` counts for nothing.
             return text.split(separator, maxsplit or -1)
 
+        opening, closing = ("[(", "])") if parentheses else ("[", "]")
         parts: list[str] = []
         start = depth = 0
         quoted = False
-        special = {'"', "[", "]", separator}
+        special = set('"' + opening + closing + separator)
 
         for i, char in enumerate(text):
             # Most characters are none of these, so they are passed over first.
@@ -622,10 +621,14 @@ class Molecule:
                 quoted = not quoted
             elif quoted:
                 continue
-            elif char == "[":
+            elif char in opening:
                 depth += 1
-            elif char == "]":
-                depth = max(depth - 1, 0)
+            elif char in closing:
+                depth -= 1
+                if depth < 0:
+                    if parentheses:
+                        raise ValueError(f"Unbalanced brackets in {text}. Check HELM.")
+                    depth = 0
             elif depth == 0:
                 parts.append(text[start:i])
                 start = i + 1
@@ -658,46 +661,6 @@ class Molecule:
             for section in sections[1:3]
         )
         return polymers, connections, hydrogen_bonds
-
-    @staticmethod
-    def _split_sequence_with_brackets(sequence: str) -> list[str]:
-        """Split a sequence into individual monomers, respecting brackets.
-
-        Nothing inside a quoted annotation counts, the way nothing inside a
-        bracketed monomer does; the split on ``$`` and ``|`` has already made
-        sure the quotes are balanced.
-        """
-        parts: list[str] = []
-        start = depth = 0
-        quoted = False
-
-        for i, char in enumerate(sequence):
-            # Most characters are none of these, so they are passed over first.
-            if char not in _SEQUENCE_SPECIAL:
-                continue
-            if char == '"':
-                quoted = not quoted
-            elif quoted:
-                continue
-            elif char in "[(":
-                depth += 1
-            elif char in "])":
-                depth -= 1
-                if depth < 0:
-                    raise ValueError(
-                        f"Unbalanced brackets in sequence {sequence}. Check HELM."
-                    )
-            elif depth == 0:
-                parts.append(sequence[start:i])
-                start = i + 1
-
-        if depth:
-            raise ValueError(f"Unbalanced brackets in sequence {sequence}. Check HELM.")
-
-        # Appended even when empty: a trailing separator leaves a nameless
-        # residue behind, which _process_monomer rejects rather than dropping.
-        parts.append(sequence[start:])
-        return parts
 
     @staticmethod
     def _parse_rna_string(sequence: str) -> list[str]:
@@ -787,7 +750,7 @@ class Molecule:
                     )
                 expanded.extend([residue] * count)
             else:
-                members = Molecule._split_sequence_with_brackets(group)
+                members = Molecule._split_outside_brackets(group, ".", parentheses=True)
                 expanded.extend(
                     Molecule._expand_residues(members, polymer_type) * count
                 )
@@ -881,7 +844,7 @@ class Molecule:
                     f"Polymer {chain_id} has an empty sequence. Check HELM."
                 )
 
-            residues = self._split_sequence_with_brackets(sequence)
+            residues = self._split_outside_brackets(sequence, ".", parentheses=True)
             # Only an annotation, a repeat or a group needs any more work, and a
             # group opens a residue: an RNA base in parentheses never does.
             if (

@@ -20,7 +20,7 @@ def main():
     )
     args = parser.parse_args()
 
-    data_dir = Path(__file__).parent / "data"
+    data_dir = Path(__file__).parents[1] / "tests" / "data"
     df = pl.read_csv(data_dir / "peptides.csv")
 
     # Remove peptides with monomers containing parentheses, spaces or hyphens

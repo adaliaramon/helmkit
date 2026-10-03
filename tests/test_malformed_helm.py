@@ -349,3 +349,8 @@ def test_an_unknown_bracketed_symbol_is_rejected_quietly(helm, capfd):
         Molecule(helm)
 
     assert "SMILES Parse Error" not in capfd.readouterr().err
+
+
+def test_a_chain_id_with_trailing_characters_is_rejected():
+    with pytest.raises(ValueError, match="Invalid chain format"):
+        Molecule._extract_polymer_type("PEPTIDE1foo")
