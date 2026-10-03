@@ -1,7 +1,8 @@
 import pytest
+from rdkit import Chem
+
 from helmkit import load_monomer_library
 from helmkit import Molecule
-from rdkit import Chem
 
 # A monomer library is read straight from an SDF, so its R-group properties can
 # disagree with the molecules they describe. Every case here used to escape as

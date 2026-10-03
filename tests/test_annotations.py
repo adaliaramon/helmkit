@@ -1,6 +1,7 @@
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
+
+from helmkit import Molecule
 
 # HELM2 lets a quoted annotation follow a polymer, a monomer or a connection.
 # It is a note for the reader and says nothing about the structure, and its

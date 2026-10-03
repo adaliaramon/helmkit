@@ -2,10 +2,11 @@ import random
 import warnings
 
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit import rdBase
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
+from helmkit import Molecule
 
 # Generated HELM strings, close enough to valid to reach the parts of the parser
 # that hand-written cases do not. Whatever goes in, helmkit has to either build

@@ -1,6 +1,7 @@
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
+
+from helmkit import Molecule
 
 # HELM2 writes a monomer repeated n times as A'n', and a repeated run of them
 # as (A.G)'n'. Both used to be read as an unknown monomer name.

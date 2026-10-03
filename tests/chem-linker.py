@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from helmkit import load_monomer_library
-from helmkit import Molecule
 from rdkit.Chem import AllChem
 from rdkit.Chem import Draw
+
+from helmkit import load_monomer_library
+from helmkit import Molecule
 
 
 def main():

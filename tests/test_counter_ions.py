@@ -1,8 +1,9 @@
 import pytest
-from helmkit import load_monomer_library
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
+from helmkit import load_monomer_library
+from helmkit import Molecule
 
 # A salt may carry its counter-ion as a fragment of its own. It used to be
 # rejected as a monomer that falls apart; it is only a second piece of the

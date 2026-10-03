@@ -5,9 +5,10 @@ import re
 from pathlib import Path
 
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit import rdBase
+
+from helmkit import Molecule
 
 # `monomer_indices` and `bond_indices` describe the molecule as a graph of
 # monomers: which monomer every atom came from, and which bonds join one

@@ -2,11 +2,12 @@ import re
 from pathlib import Path
 
 import polars as pl
+from rdkit import Chem
+from tqdm import tqdm
+
 from helmkit import load_monomer_library
 from helmkit import Molecule
 from helmkit.molecule import _create_missing_monomer
-from rdkit import Chem
-from tqdm import tqdm
 
 
 def states_double_bond_geometry(helm: str) -> bool:

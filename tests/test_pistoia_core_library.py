@@ -3,10 +3,11 @@ import json
 from pathlib import Path
 
 import pytest
-from helmkit import load_monomer_library
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit import rdBase
+
+from helmkit import load_monomer_library
+from helmkit import Molecule
 
 # The HELM core monomer library of the Pistoia Alliance, which the HELM project
 # recommends as everyone's base. Its SMILES mark each R-group with an atom map

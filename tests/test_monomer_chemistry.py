@@ -1,5 +1,6 @@
-from helmkit import Molecule
 from rdkit import Chem
+
+from helmkit import Molecule
 
 # The structures the shipped monomer library builds for well known nucleosides.
 # Written out here so the expectations do not depend on anything helmkit builds.

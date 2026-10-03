@@ -1,7 +1,8 @@
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
+
+from helmkit import Molecule
 
 # Double bond geometry survived neither the way a monomer is parsed nor the
 # deletion of the dummy atoms, and the corpus test cannot see it because it

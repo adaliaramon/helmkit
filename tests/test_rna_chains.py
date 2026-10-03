@@ -1,6 +1,7 @@
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
+
+from helmkit import Molecule
 
 # An RNA chain writes several monomers into one residue, so it is split by its
 # own routine rather than the one peptides use. The two have to agree about

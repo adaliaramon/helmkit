@@ -1,8 +1,9 @@
 import random
 
-from helmkit import Molecule
 from rdkit import Chem
 from tqdm import tqdm
+
+from helmkit import Molecule
 
 
 def test():

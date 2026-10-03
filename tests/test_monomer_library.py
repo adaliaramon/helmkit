@@ -1,7 +1,8 @@
 import pytest
+from rdkit import Chem
+
 from helmkit import load_monomer_library
 from helmkit import Molecule
-from rdkit import Chem
 
 
 def write_library(path, monomers):

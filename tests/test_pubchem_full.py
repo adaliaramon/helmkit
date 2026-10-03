@@ -2,12 +2,13 @@ import re
 from pathlib import Path
 
 import polars as pl
-from helmkit import load_monomer_library
-from helmkit import Molecule
-from helmkit.molecule import _create_missing_monomer
 from rdkit import Chem
 from rdkit import rdBase
 from tqdm import tqdm
+
+from helmkit import load_monomer_library
+from helmkit import Molecule
+from helmkit.molecule import _create_missing_monomer
 
 h_number_pattern = re.compile(r"H(\d+)")
 

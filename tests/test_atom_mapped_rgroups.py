@@ -1,7 +1,8 @@
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
+from helmkit import Molecule
 
 # HELM2 inline SMILES may mark R-group n with atom map n on the atom that leaves
 # when the bond is made. Those atoms used to be kept as ordinary atoms, so a

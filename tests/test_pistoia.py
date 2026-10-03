@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
+from helmkit import Molecule
 
 # Test cases from the Pistoia Alliance HELM2 reference implementation; see
 # tests/data/pistoia/README.md for where each comes from.

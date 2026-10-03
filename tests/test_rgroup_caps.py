@@ -1,8 +1,9 @@
 import pytest
-from helmkit import load_monomer_library
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit.Chem.rdMolDescriptors import CalcMolFormula
+
+from helmkit import load_monomer_library
+from helmkit import Molecule
 
 
 def glycine_library(path, m_rgroups):

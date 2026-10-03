@@ -1,9 +1,10 @@
 from pathlib import Path
 
 import polars as pl
-from helmkit import Molecule
 from rdkit import Chem
 from tqdm import tqdm
+
+from helmkit import Molecule
 
 USE_PYPEPT = False
 

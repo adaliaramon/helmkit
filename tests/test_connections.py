@@ -1,6 +1,7 @@
 import pytest
-from helmkit import Molecule
 from rdkit import Chem
+
+from helmkit import Molecule
 
 
 def test_residue_number_zero_is_rejected():

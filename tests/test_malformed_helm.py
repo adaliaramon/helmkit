@@ -1,7 +1,8 @@
 import pytest
+from rdkit import Chem
+
 from helmkit import load_monomer_library
 from helmkit import Molecule
-from rdkit import Chem
 
 # Malformed HELM must raise, never produce a quietly different molecule. The
 # cases below all used to warn and carry on, or to escape as an exception that

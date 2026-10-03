@@ -17,7 +17,6 @@ from typing import TypedDict
 from rdkit import Chem
 from rdkit import rdBase
 
-
 MAX_RGROUPS = 4
 
 PolymerType = Literal["PEPTIDE", "RNA", "CHEM"]

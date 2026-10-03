@@ -1,7 +1,8 @@
 import pytest
+from rdkit import Chem
+
 from helmkit import Molecule
 from helmkit.molecule import _create_missing_monomer
-from rdkit import Chem
 
 # A monomer written as inline SMILES without _R1 and _R2 labels has its
 # attachment points inferred. They are the amine and the carboxyl on the alpha

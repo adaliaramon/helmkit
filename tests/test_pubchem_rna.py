@@ -4,9 +4,10 @@ import json
 import re
 from pathlib import Path
 
-from helmkit import Molecule
 from rdkit import Chem
 from rdkit import rdBase
+
+from helmkit import Molecule
 
 # Nucleic acid structures from PubChem, one record per distinct HELM string
 # with every structure PubChem records for it. PubChem frequently holds several

@@ -39,7 +39,12 @@ exclude = [
 preview = true
 
 [tool.ruff.lint]
-ignore = ["I001", "N999"]
+extend-select = ["UP", "I"]
+ignore = ["N999"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+order-by-type = false
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true

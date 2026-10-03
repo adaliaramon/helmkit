@@ -1,10 +1,11 @@
 from pathlib import Path
 
 import polars as pl
-from helmkit import load_in_parallel
-from helmkit import load_monomer_library
 from rdkit import Chem
 from tqdm import tqdm
+
+from helmkit import load_in_parallel
+from helmkit import load_monomer_library
 
 
 def test():
