@@ -61,7 +61,7 @@ def parse_comma_separated_property(
     molecule: Chem.Mol, property_name: str
 ) -> list[str | None]:
     value = get_molecule_property(molecule, property_name)
-    return [None if v == "None" else v for v in value.split(",")] if value else []
+    return [None if v == "None" else v for v in value.split(",")] if bool(value) else []
 
 
 def _dummy_atoms(molecule: Chem.Mol) -> list[int]:
@@ -214,7 +214,7 @@ def load_monomer_library(library_path: str | None = None) -> MonomerLibrary:
             continue
 
         symbol = get_molecule_property(mol, "symbol")
-        if not symbol:
+        if not bool(symbol):
             warnings.warn("Monomer without a symbol property will be skipped")
             continue
 
@@ -1001,7 +1001,7 @@ class Molecule:
     def _resolve_residue(self, chain_id: str, residue: int, context: str) -> int:
         """Look up the monomer index of a 0-based residue of a declared chain."""
         residues = self.residue_reps.get(chain_id)
-        if not residues:
+        if residues is None:
             raise ValueError(
                 f"Chain {chain_id} is not a polymer in this HELM string. Check {context}."
             )
